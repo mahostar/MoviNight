@@ -1,8 +1,8 @@
-# 🎬 MoviNight
+![MoviNight](branding/logoGit.png)
 
 A modern, fast, and beautiful movie and TV show discovery application built with Tauri v2.
 
-![MoviNight](logo.png)
+![Demo animation](branding/demo.gif)
 
 ## ✨ Features
 
