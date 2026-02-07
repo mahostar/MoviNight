@@ -97,9 +97,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadLanguages();
   await loadWatchProviders();
   
-  // Set default year range
-  document.getElementById('year-from').value = '2025';
-  document.getElementById('year-to').value = '2020';
+  // Initialize year range with dynamic current year
+  initializeYearRange();
   
   // Set default sort order to newest first
   document.getElementById('sort-by').value = 'release_date.desc';
@@ -227,7 +226,7 @@ function setupEventListeners() {
     console.log('Button clicked:', { action, id, title, contentType });
 
     // Prevent event bubbling for action buttons
-    if (action === 'remove-watched' || action === 'remove-whitelist' || action === 'watch' || action === 'whitelist') {
+    if (action === 'remove-watched' || action === 'remove-whitelist' || action === 'watch' || action === 'whitelist' || action === 'watch-from-whitelist') {
       e.stopPropagation();
     }
 
@@ -242,6 +241,15 @@ function setupEventListeners() {
         await removeFromWhiteList(id, contentType);
       } else if (action === 'view-details') {
         await openMovieDetails(id, contentType, title);
+      } else if (action === 'watch-from-whitelist') {
+        // Move from white list to watched
+        await addToWatched(id, title, overview, posterPath, date, voteAverage, contentType);
+        await removeFromWhiteList(id, contentType);
+        // Refresh the white list display
+        if (currentPageType === 'white-list') {
+          displayWhiteListItems();
+        }
+        showSuccess(`Moved "${title}" to watched list!`);
       }
     } catch (error) {
       console.error('Error handling button click:', error);
@@ -435,6 +443,9 @@ function renderWhiteListCard(item) {
     <div class="result-card" data-action="view-details" data-id="${item.id}" data-type="${item.content_type}" data-title="${item.title}">
       <button class="remove-btn" data-action="remove-whitelist" data-id="${item.id}" data-type="${item.content_type}" title="Remove from white list">
         ❌
+      </button>
+      <button class="watch-btn" data-action="watch-from-whitelist" data-id="${item.id}" data-type="${item.content_type}" data-title="${item.title.replace(/"/g, '&quot;')}" data-overview="${overview.replace(/"/g, '&quot;').replace(/\n/g, ' ')}" data-poster-path="${item.poster_path || ''}" data-date="${item.release_date || ''}" data-vote-average="${item.vote_average || 0}" title="Mark as watched">
+        👁️
       </button>
       <img 
         src="${posterUrl}" 
@@ -789,14 +800,23 @@ function toggleProvider(providerId) {
 }
 
 async function performSearch() {
-  const yearFrom = document.getElementById('year-from').value;
-  const yearTo = document.getElementById('year-to').value;
+  const yearFromInput = document.getElementById('year-from').value;
+  const yearToInput = document.getElementById('year-to').value;
   const sortBy = document.getElementById('sort-by').value;
   const excludeAnimation = document.getElementById('exclude-animation').checked;
 
+  // Parse year values - left side is START year (from), right side is END year (to)
+  let yearFrom = parseInt(yearFromInput) || 1980;
+  let yearTo = parseInt(yearToInput) || new Date().getFullYear();
+
+  // Ensure yearFrom is always less than or equal to yearTo
+  if (yearFrom > yearTo) {
+    [yearFrom, yearTo] = [yearTo, yearFrom];
+  }
+
   currentFilters = {
-    yearFrom: parseInt(yearFrom),
-    yearTo: parseInt(yearTo),
+    yearFrom: yearFrom,
+    yearTo: yearTo,
     sortBy: sortBy,
     genreIds: selectedGenres,
     excludeAnimation: excludeAnimation,
@@ -1266,6 +1286,93 @@ function renderSearchResultCard(item) {
 
 // Keep filter functions available globally for HTML onclick handlers (still used in filter buttons)
 window.switchWhiteListFilter = switchWhiteListFilter;
+
+// Year Range Initialization and Management
+function initializeYearRange() {
+  const currentYear = new Date().getFullYear();
+  const yearFromInput = document.getElementById('year-from');
+  const yearToInput = document.getElementById('year-to');
+  const yearFromArrow = document.getElementById('year-from-arrow');
+  const yearToArrow = document.getElementById('year-to-arrow');
+  const yearFromDropdown = document.getElementById('year-from-dropdown');
+  const yearToDropdown = document.getElementById('year-to-dropdown');
+  const yearFromContent = yearFromDropdown.querySelector('.year-dropdown-content');
+  const yearToContent = yearToDropdown.querySelector('.year-dropdown-content');
+
+  // Set default values: From = 2015, To = current year
+  yearFromInput.value = '2015';
+  yearToInput.value = currentYear.toString();
+
+  // Populate dropdowns with year options (from current year down to 1900)
+  const yearItemsHtml = generateYearDropdownItems(currentYear);
+  yearFromContent.innerHTML = yearItemsHtml;
+  yearToContent.innerHTML = yearItemsHtml;
+
+  // Toggle dropdown for "From" year
+  yearFromArrow.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleDropdown(yearFromDropdown, yearToDropdown);
+  });
+
+  // Toggle dropdown for "To" year
+  yearToArrow.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleDropdown(yearToDropdown, yearFromDropdown);
+  });
+
+  // Handle year selection from dropdowns
+  yearFromContent.addEventListener('click', (e) => {
+    if (e.target.classList.contains('year-dropdown-item')) {
+      yearFromInput.value = e.target.dataset.year;
+      yearFromDropdown.classList.remove('open');
+    }
+  });
+
+  yearToContent.addEventListener('click', (e) => {
+    if (e.target.classList.contains('year-dropdown-item')) {
+      yearToInput.value = e.target.dataset.year;
+      yearToDropdown.classList.remove('open');
+    }
+  });
+
+  // Close dropdowns when clicking outside
+  document.addEventListener('click', () => {
+    yearFromDropdown.classList.remove('open');
+    yearToDropdown.classList.remove('open');
+  });
+
+  // Prevent closing when clicking inside dropdown
+  yearFromDropdown.addEventListener('click', (e) => e.stopPropagation());
+  yearToDropdown.addEventListener('click', (e) => e.stopPropagation());
+
+  // Validate input on change
+  yearFromInput.addEventListener('change', () => validateYearInput(yearFromInput));
+  yearToInput.addEventListener('change', () => validateYearInput(yearToInput));
+}
+
+function toggleDropdown(dropdownToToggle, dropdownToClose) {
+  dropdownToClose.classList.remove('open');
+  dropdownToToggle.classList.toggle('open');
+}
+
+function generateYearDropdownItems(currentYear) {
+  let items = '';
+  // Generate years from current year down to 1900
+  for (let year = currentYear; year >= 1900; year--) {
+    items += `<div class="year-dropdown-item" data-year="${year}">${year}</div>`;
+  }
+  return items;
+}
+
+function validateYearInput(input) {
+  let value = parseInt(input.value);
+  if (isNaN(value) || value < 1900) {
+    value = 1900;
+  } else if (value > 2100) {
+    value = 2100;
+  }
+  input.value = value;
+}
 
 // Movie Details Modal Functions
 async function openMovieDetails(id, contentType, title) {

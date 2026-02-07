@@ -562,10 +562,12 @@ async fn search_movies(
         )
     };
     
-    if let Some(year) = year_to {
+    // year_from is the START year (left side), year_to is the END year (right side)
+    // For TMDB API: gte = greater than or equal (start date), lte = less than or equal (end date)
+    if let Some(year) = year_from {
         url.push_str(&format!("&primary_release_date.gte={}-01-01", year));
     }
-    if let Some(year) = year_from {
+    if let Some(year) = year_to {
         url.push_str(&format!("&primary_release_date.lte={}-12-31", year));
     }
     
@@ -634,10 +636,12 @@ async fn search_tv_shows(
         )
     };
 
-    if let Some(year) = year_to {
+    // year_from is the START year (left side), year_to is the END year (right side)
+    // For TMDB API: gte = greater than or equal (start date), lte = less than or equal (end date)
+    if let Some(year) = year_from {
         url.push_str(&format!("&air_date.gte={}-01-01", year));
     }
-    if let Some(year) = year_from {
+    if let Some(year) = year_to {
         url.push_str(&format!("&air_date.lte={}-12-31", year));
     }
     

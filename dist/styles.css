@@ -517,6 +517,12 @@ body.app-loaded {
   height: 1.5rem;
   border-radius: 4px;
   margin-right: 0.5rem;
+  vertical-align: middle;
+}
+
+.provider-chip {
+  display: inline-flex;
+  align-items: center;
 }
 
 .loading-text {
@@ -527,32 +533,130 @@ body.app-loaded {
 /* Year Range */
 .year-range {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 1.5rem;
 }
 
-.year-range select {
+.year-combo-wrapper {
   flex: 1;
-  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.year-label {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.year-combo {
+  position: relative;
+  display: flex;
+  align-items: center;
   border: 2px solid var(--border-color);
   border-radius: 12px;
   background: var(--bg-secondary);
+  overflow: visible;
+}
+
+.year-combo:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(156, 39, 176, 0.3);
+}
+
+.year-combo-input {
+  flex: 1;
+  padding: 1rem;
+  border: none;
+  background: transparent;
   color: var(--text-primary);
   font-size: 1.1rem;
   font-weight: 500;
-  cursor: pointer;
+  text-align: center;
+  outline: none;
 }
 
-.year-range select:focus {
-  outline: none;
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(156, 39, 176, 0.3);
+.year-combo-input::placeholder {
+  color: var(--text-muted);
+}
+
+.year-combo-arrow {
+  background: var(--bg-tertiary);
+  border: none;
+  border-left: 1px solid var(--border-color);
+  padding: 1rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  transition: all 0.2s ease;
+  border-radius: 0 10px 10px 0;
+}
+
+.year-combo-arrow:hover {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.year-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: all 0.3s ease;
+  z-index: 100;
+  margin-top: -2px;
+}
+
+.year-dropdown.open {
+  max-height: 250px;
+  opacity: 1;
+  overflow-y: auto;
+}
+
+.year-dropdown-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.year-dropdown-item {
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 1rem;
+  text-align: center;
+  transition: background 0.2s ease;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.year-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.year-dropdown-item:hover {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.year-dropdown-item.selected {
+  background: var(--accent-primary);
+  color: white;
 }
 
 .year-separator {
   color: var(--text-primary);
   font-weight: 600;
   font-size: 1.2rem;
+  margin-bottom: 1rem;
 }
 
 /* Sort Select */
@@ -814,11 +918,16 @@ body.app-loaded {
   .year-range {
     flex-direction: column;
     align-items: stretch;
-    gap: 0.5rem;
+    gap: 1rem;
   }
 
   .year-separator {
     text-align: center;
+    margin-bottom: 0;
+  }
+
+  .year-combo-wrapper {
+    width: 100%;
   }
 
   .results-grid {
@@ -1285,6 +1394,31 @@ body.app-loaded {
 .remove-btn:hover {
   background: #c53030;
   border-color: #c53030;
+  transform: scale(1.05);
+}
+
+/* Watch Button on White List cards */
+.white-list-grid .watch-btn {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  right: auto;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.5rem;
+  cursor: pointer;
+  font-size: 1.1rem;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+  z-index: 2;
+}
+
+.white-list-grid .watch-btn:hover {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
   transform: scale(1.05);
 }
 
