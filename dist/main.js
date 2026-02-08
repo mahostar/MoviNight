@@ -116,6 +116,8 @@ function initializeElements() {
   resultsGrid = document.getElementById('results-grid');
   resultsHeader = document.getElementById('results-header');
   resultsInfo = document.getElementById('results-info');
+  
+
   viewMoreContainer = document.getElementById('view-more-container');
   loading = document.getElementById('loading');
   emptyState = document.getElementById('empty-state');
@@ -361,7 +363,7 @@ function renderWatchedCard(item) {
         <div class="result-title">${item.title}</div>
         <div class="result-meta">
           <span class="result-year">${year}</span>
-          <span class="result-rating">⭐ ${rating}</span>
+          <span class="result-rating">${rating}</span>
           <span class="result-type">${item.content_type === 'movie' ? '🎬' : '📺'}</span>
         </div>
         <div class="result-overview">${overview}</div>
@@ -458,7 +460,7 @@ function renderWhiteListCard(item) {
         <div class="result-title">${item.title}</div>
         <div class="result-meta">
           <span class="result-year">${year}</span>
-          <span class="result-rating">⭐ ${rating}</span>
+          <span class="result-rating">${rating}</span>
           <span class="result-type">${item.content_type === 'movie' ? '🎬' : '📺'}</span>
         </div>
         <div class="result-overview">${overview}</div>
@@ -804,6 +806,7 @@ async function performSearch() {
   const yearToInput = document.getElementById('year-to').value;
   const sortBy = document.getElementById('sort-by').value;
   const excludeAnimation = document.getElementById('exclude-animation').checked;
+  const minRating = parseFloat(document.getElementById('min-rating').value) || 0;
 
   // Parse year values - left side is START year (from), right side is END year (to)
   let yearFrom = parseInt(yearFromInput) || 1980;
@@ -821,7 +824,8 @@ async function performSearch() {
     genreIds: selectedGenres,
     excludeAnimation: excludeAnimation,
     watchProviders: selectedProviders,
-    originalLanguage: selectedLanguage
+    originalLanguage: selectedLanguage,
+    minRating: minRating
   };
 
   // Reset for new search
@@ -858,7 +862,8 @@ async function searchContent(appendResults = false) {
           sortBy: currentFilters.sortBy,
           excludeAnimation: currentFilters.excludeAnimation,
           withWatchProviders: currentFilters.watchProviders,
-          withOriginalLanguage: currentFilters.originalLanguage
+          withOriginalLanguage: currentFilters.originalLanguage,
+          minRating: currentFilters.minRating
         })
       : await invoke('search_tv_shows', {
           query: '',
@@ -869,7 +874,8 @@ async function searchContent(appendResults = false) {
           sortBy: currentFilters.sortBy,
           excludeAnimation: currentFilters.excludeAnimation,
           withWatchProviders: currentFilters.watchProviders,
-          withOriginalLanguage: currentFilters.originalLanguage
+          withOriginalLanguage: currentFilters.originalLanguage,
+          minRating: currentFilters.minRating
         });
     
     if (appendResults) {
@@ -1056,7 +1062,7 @@ async function renderResultCard(item) {
         <div class="result-title">${title}</div>
         <div class="result-meta">
           <span class="result-year">${year}</span>
-          <span class="result-rating">⭐ ${rating}</span>
+          <span class="result-rating">${rating}</span>
         </div>
         <div class="result-overview">${overview}</div>
       </div>
@@ -1275,7 +1281,7 @@ function renderSearchResultCard(item) {
         <div class="result-title">${title}</div>
         <div class="result-meta">
           <span class="result-year">${year}</span>
-          <span class="result-rating">⭐ ${rating}</span>
+          <span class="result-rating">${rating}</span>
           <span class="result-type">${item.content_type === 'movie' ? '🎬' : '📺'}</span>
         </div>
         <div class="result-overview">${overview}</div>
@@ -1454,7 +1460,7 @@ function populateMovieDetails(details, trailers, contentType) {
   year.textContent = `${releaseYear}`;
   
   const voteAverage = details.vote_average !== null ? details.vote_average.toFixed(1) : 'N/A';
-  rating.textContent = `⭐ ${voteAverage}`;
+  rating.textContent = `${voteAverage}`;
   
   type.textContent = contentType === 'movie' ? '🎬 Movie' : '📺 TV Show';
   

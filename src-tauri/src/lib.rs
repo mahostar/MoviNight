@@ -541,6 +541,7 @@ async fn search_movies(
     exclude_animation: bool,
     with_watch_providers: Vec<u32>,
     with_original_language: Option<String>,
+    min_rating: Option<f64>,
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<Movie>, ApiError> {
     let api_key = {
@@ -597,6 +598,13 @@ async fn search_movies(
             url.push_str(&format!("&with_original_language={}", lang));
         }
     }
+
+    // Add minimum rating filter (vote_average.gte)
+    if let Some(rating) = min_rating {
+        if rating > 0.0 {
+            url.push_str(&format!("&vote_average.gte={}", rating));
+        }
+    }
     
     let response = reqwest::get(&url).await?;
     let api_response: ApiResponse<Movie> = response.json().await?;
@@ -615,6 +623,7 @@ async fn search_tv_shows(
     exclude_animation: bool,
     with_watch_providers: Vec<u32>,
     with_original_language: Option<String>,
+    min_rating: Option<f64>,
     state: State<'_, AppState>,
 ) -> Result<ApiResponse<TvShow>, ApiError> {
     let api_key = {
@@ -669,6 +678,13 @@ async fn search_tv_shows(
     if let Some(lang) = with_original_language {
         if !lang.is_empty() {
             url.push_str(&format!("&with_original_language={}", lang));
+        }
+    }
+
+    // Add minimum rating filter (vote_average.gte)
+    if let Some(rating) = min_rating {
+        if rating > 0.0 {
+            url.push_str(&format!("&vote_average.gte={}", rating));
         }
     }
     
