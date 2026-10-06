@@ -6,35 +6,68 @@
 
 A desktop movie and TV companion built with **Tauri 2 · Rust · JavaScript**.
 
-[Explore the features](#what-you-can-do) · [Connect an AI agent](MCP_GUIDE.md) · [Build the app](#development) · [Report an issue](https://github.com/mahostar/MoviNight/issues)
+**[Download MoviNight 1.3.0 for Windows](https://github.com/mahostar/MoviNight/releases/tag/MoviNight-v1.3.0)**
+
+[Explore the features](#what-you-can-do) · [Connect an AI agent](MCP_GUIDE.md) · [Build the app](#development)
 
 </div>
 
 ![MoviNight demo](branding/demo.gif)
 
-### A closer look
+### Discover something worth watching
 
-**Discover** — compact filters, movie and TV results, and a library that stays on your device.
+Combine movie/TV type, match-any genres, release years, language and rating. Hide animation or incomplete titles, and see which cards are already in your library.
 
-![Discover movies and TV shows in MoviNight](branding/screenshots/discover.png)
+![Filtered Discover with saved-library indicators](branding/screenshots/discover.png)
 
-**Reel Research** — paste titles or tables, give your agent instructions, and review its matches.
+### Research → verify → approve
 
-![Reel Research workspace](branding/screenshots/reel-research.png)
+Paste a table in **Reel Research**. A connected MCP client searches TMDB, checks title/year/format, and stages matches. Review the original request beside the verified result; only your approval adds it to Waitlist.
 
-**Streaming platforms** — find providers quickly in a searchable popup.
+![Research table with completed matching notes](branding/screenshots/reel-research.png)
 
-![Searchable streaming platform picker](branding/screenshots/streaming-platforms.png)
+![Three verified matches awaiting in-app approval](branding/screenshots/proposal-review.png)
 
-**MCP documentation** — copy the complete connection and tool guide straight from Settings.
+### Picks from your own library
 
-![MCP settings with the Copy documentation button](branding/screenshots/mcp-documentation.png)
+Use **AI Picks** for a new watch from your waitlist or a rewatch from your history. Each suggestion includes its source, a reason and, for rewatches, your saved watched date.
 
-**Offline storage** — control downloads, set a disk limit, and clear only Discover cache.
+![Five populated library-based suggestions with explanations](branding/screenshots/ai-picks.png)
 
-![Offline storage settings](branding/screenshots/offline-storage.png)
+<details>
+<summary><strong>See search, libraries, season tracking and connection controls</strong></summary>
 
-*Screenshots use demo data and sample research.*
+**Title search** spans movies and TV shows and supports more results.
+
+![Movie and TV title search](branding/screenshots/title-search.png)
+
+**Watched** keeps dates and tracked seasons; **Waitlist** keeps your approved choices.
+
+![Watched movies and series with saved dates](branding/screenshots/watched-library.png)
+
+![Populated waitlist after approval](branding/screenshots/waitlist.png)
+
+**Season tracking** lives alongside verified TV details.
+
+![TV metadata and season checkboxes](branding/screenshots/season-tracker.png)
+
+**Streaming platforms** open in a searchable popup, with familiar services first.
+
+![Streaming platform picker with logos](branding/screenshots/streaming-platforms.png)
+
+**MCP documentation** is available inside Settings with a copy button.
+
+![In-app documentation copy](branding/screenshots/mcp-documentation.png)
+
+</details>
+
+### Your library, even without a connection
+
+Downloaded metadata and images stay on this device. Choose a cache limit, disable caching, or clear **only Discover** while retaining saved-library and other downloaded data.
+
+![Populated offline-cache settings](branding/screenshots/offline-storage.png)
+
+*The GIF and screenshots are captured from the real app with an isolated demonstration library and sample dates. Matches and suggestions were published through the actual MCP tools; no personal library or credentials are shown. AI reasoning requires your connected client.*
 
 ## What you can do
 
@@ -71,7 +104,7 @@ See the [complete MCP guide](MCP_GUIDE.md).
 
 ## Your library & upgrades
 
-Install **1.2.0** over your existing installation using the same installation scope. The app identifier and saved-data location remain the same; uninstalling or clearing your library is unnecessary.
+Install **1.3.0** over your existing installation using the same installation scope. The app identifier and saved-data location remain the same; uninstalling or clearing your library is unnecessary.
 
 On Windows, data lives in **%APPDATA%\movinight**:
 
