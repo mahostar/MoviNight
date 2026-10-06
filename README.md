@@ -6,7 +6,7 @@
 
 A desktop movie and TV companion built with **Tauri 2 · Rust · JavaScript**.
 
-**[Download MoviNight 1.3.0 for Windows](https://github.com/mahostar/MoviNight/releases/tag/MoviNight-v1.3.0)**
+**[Download MoviNight 1.3.1 for Windows](https://github.com/mahostar/MoviNight/releases/tag/MoviNight-v1.3.1)**
 
 [Explore the features](#what-you-can-do) · [Connect an AI agent](MCP_GUIDE.md) · [Build the app](#development)
 
@@ -22,7 +22,7 @@ Combine movie/TV type, match-any genres, release years, language and rating. Hid
 
 ### Research → verify → approve
 
-Paste a table in **Reel Research**. A connected MCP client searches TMDB, checks title/year/format, and stages matches. Review the original request beside the verified result; only your approval adds it to Waitlist.
+Paste a table in **Reel Research**. A connected MCP client searches TMDB, checks title/year/format, and stages matches. Review verified matches as poster cards, then open details for the original request and matching explanation. Approve or remove a match from either the card or popup; only approval adds it to Waitlist.
 
 ![Research table with completed matching notes](branding/screenshots/reel-research.png)
 
@@ -104,7 +104,7 @@ See the [complete MCP guide](MCP_GUIDE.md).
 
 ## Your library & upgrades
 
-Install **1.3.0** over your existing installation using the same installation scope. The app identifier and saved-data location remain the same; uninstalling or clearing your library is unnecessary.
+Install **1.3.1** over your existing installation using the same installation scope. The app identifier and saved-data location remain the same; uninstalling or clearing your library is unnecessary.
 
 On Windows, data lives in **%APPDATA%\movinight**:
 

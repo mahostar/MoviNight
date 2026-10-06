@@ -3,7 +3,7 @@
     "@tauri-apps/plugin-sql": "^2.2.1"
   },
   "name": "movinight",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "private": true,
   "scripts": {
     "check": "node --check dist/main.js",

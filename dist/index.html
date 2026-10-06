@@ -82,6 +82,13 @@
             <button class="modal-close" id="close-movie-details">×</button>
           </div>
           <div class="modal-body movie-details-body">
+            <div id="movie-details-actions" class="detail-actions"></div>
+            <section id="movie-details-review" class="detail-review" hidden>
+              <span class="eyebrow">AI MATCH REVIEW</span>
+              <p id="movie-details-requested" class="requested-title"></p>
+              <h3>Why this match</h3>
+              <p id="movie-details-reason"></p>
+            </section>
             <div class="movie-details-loading" id="movie-details-loading">
               <div class="loading-spinner"></div>
               <p>Loading movie details...</p>

@@ -30,6 +30,11 @@ let researchDirty = false;
 let aiRefreshing = false;
 let mcpConnection = null;
 let contentGeneration = 0;
+let detailsGeneration = 0;
+let activeDetailsItem = null;
+let activeProposalId = null;
+let proposalRenderKey = '';
+const reviewingProposals = new Set();
 let currentSeasonTrackerId = null; // ID of TV show currently open in season tracker
 
 // DOM elements
@@ -214,7 +219,7 @@ function setupEventListeners() {
   // Event delegation for result card buttons
   document.addEventListener('click', async (e) => {
     const button = e.target.closest('[data-action]');
-    if (!button) return;
+    if (!button || e.target.closest('[data-review]')) return;
 
     const action = button.dataset.action;
     const id = parseInt(button.dataset.id);
@@ -244,7 +249,7 @@ function setupEventListeners() {
       } else if (action === 'remove-whitelist') {
         await removeFromWhiteList(id, contentType);
       } else if (action === 'view-details') {
-        await openMovieDetails(id, contentType, title);
+        await openMovieDetails(id, contentType, title, button.dataset.proposalId);
       } else if (action === 'watch-from-whitelist') {
         // Move from waitlist to watched
         await addToWatched(id, title, overview, posterPath, date, voteAverage, contentType);
@@ -437,18 +442,18 @@ async function removeFromWhiteList(id, contentType) {
   }
 }
 
-function updateWhiteListButton(id, contentType, isWhiteListed) {
-  const buttons = document.querySelectorAll(`[data-action="whitelist"][data-id="${id}"][data-type="${contentType}"]`);
-  buttons.forEach(button => {
-    if (isWhiteListed) {
-      button.classList.add('white-listed');
-      button.textContent = '⭐';
-      button.title = 'Remove from waitlist';
-    } else {
-      button.classList.remove('white-listed');
-      button.textContent = '☆';
-      button.title = 'Add to waitlist';
-    }
+function updateWhiteListButton(id, contentType, saved) {
+  updateLibraryAction('whitelist', id, contentType, saved);
+}
+function updateLibraryAction(action, id, contentType, saved) {
+  const label = action === 'watch' ? (saved ? 'Remove from watched' : 'Mark watched') : (saved ? 'Remove from waitlist' : 'Add to waitlist');
+  document.querySelectorAll(`[data-action="${action}"][data-id="${id}"][data-type="${contentType}"]`).forEach(button => {
+    button.classList.toggle(action === 'watch' ? 'watched' : 'white-listed', saved);
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-pressed', String(saved));
+    button.title = label;
+    button.dataset.tooltip = label;
+    button.textContent = button.classList.contains('detail-library-action') ? label : (action === 'watch' ? (saved ? '✓' : '◉') : (saved ? '★' : '☆'));
   });
 }
 
@@ -508,19 +513,8 @@ async function removeFromWatched(id, contentType) {
   }
 }
 
-function updateWatchButton(id, contentType, isWatched) {
-  const buttons = document.querySelectorAll(`[data-action="watch"][data-id="${id}"][data-type="${contentType}"]`);
-  buttons.forEach(button => {
-    if (isWatched) {
-      button.classList.add('watched');
-      button.textContent = '✅';
-      button.title = 'Remove from watched';
-    } else {
-      button.classList.remove('watched');
-      button.textContent = '👁️';
-      button.title = 'Mark as watched';
-    }
-  });
+function updateWatchButton(id, contentType, saved) {
+  updateLibraryAction('watch', id, contentType, saved);
 }
 
 async function isItemWatched(id, contentType) {
@@ -1036,7 +1030,17 @@ function validateYearInput(input) {
 }
 
 // Movie Details Modal Functions
-async function openMovieDetails(id, contentType, title) {
+async function openMovieDetails(id, contentType, title, proposalId) {
+  const generation = ++detailsGeneration;
+  activeDetailsItem = null;
+  activeProposalId = proposalId || null;
+  const proposal = aiWorkspace?.proposals.find(p => p.proposal_id === activeProposalId);
+  renderDetailActions(proposal?.item, proposal);
+  const review = document.getElementById('movie-details-review');
+  review.hidden = !proposal;
+  document.getElementById('movie-details-requested').textContent = proposal ? `You listed: ${proposal.requested_title}` : '';
+  document.getElementById('movie-details-reason').textContent = proposal?.reason || '';
+
   const modal = document.getElementById('movie-details-modal');
   const modalTitle = document.getElementById('movie-details-title');
   const loading = document.getElementById('movie-details-loading');
@@ -1093,7 +1097,10 @@ async function openMovieDetails(id, contentType, title) {
     console.log('Trailers:', trailers);
 
     // Populate the modal
+    if (generation !== detailsGeneration) return;
     populateMovieDetails(details, trailers, contentType);
+    activeDetailsItem = { ...details, content_type: contentType, title: details.title || details.name, release_date: details.release_date || details.first_air_date || '' };
+    renderDetailActions(activeDetailsItem, proposal);
 
     // Show content
     loading.style.display = 'none';
@@ -1109,6 +1116,7 @@ async function openMovieDetails(id, contentType, title) {
     }
 
   } catch (err) {
+    if (generation !== detailsGeneration) return;
     console.error('Failed to load movie details:', err);
     loading.style.display = 'none';
     error.style.display = 'block';
@@ -1211,6 +1219,10 @@ function setupTrailers(trailers) {
 }
 
 function closeMovieDetails() {
+  ++detailsGeneration;
+  activeDetailsItem = null;
+  activeProposalId = null;
+  document.getElementById('movie-details-actions').innerHTML = '';
   const modal = document.getElementById('movie-details-modal');
   const trailerIframe = document.getElementById('trailer-iframe');
 
@@ -1386,7 +1398,7 @@ window.updateSeasonSummary = updateSeasonSummary;
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 }
-function libraryCard(item, mode = 'browse') {
+function libraryCard(item, mode = 'browse', proposal = null) {
   const title = item.title || item.name || 'Untitled';
   const kind = item.content_type;
   const date = item.release_date || item.first_air_date || '';
@@ -1399,9 +1411,12 @@ function libraryCard(item, mode = 'browse') {
   let buttons = mode === 'watched' ? `<button class="remove-btn" data-action="remove-watched" ${attrs} aria-label="Remove ${escapeHtml(title)} from watched">×</button>`
     : mode === 'waitlist' ? `<button class="watch-btn" data-action="watch-from-whitelist" ${attrs} aria-label="Mark ${escapeHtml(title)} watched">✓</button><button class="remove-btn" data-action="remove-whitelist" ${attrs} aria-label="Remove ${escapeHtml(title)} from waitlist">×</button>`
     : `<button class="watch-btn ${watched ? 'watched' : ''}" data-action="watch" ${attrs} aria-label="${watched ? 'Remove from watched' : 'Mark watched'}">${watched ? '✓' : '◉'}</button><button class="white-list-btn ${waitlisted ? 'white-listed' : ''}" data-action="whitelist" ${attrs} aria-label="${waitlisted ? 'Remove from waitlist' : 'Add to waitlist'}">${waitlisted ? '★' : '☆'}</button>`;
+  if (mode === 'proposal') buttons = '';
+  buttons = buttons.replace(/aria-label="([^"]*)"/g, 'aria-label="$1" title="$1" data-tooltip="$1"');
+  const reviewInfo = proposal ? `<span class="eyebrow">${proposal.research_id === aiWorkspace?.research.id ? 'CURRENT RESEARCH' : 'EARLIER RESEARCH'}</span><p class="requested-title">You listed: ${escapeHtml(proposal.requested_title)}</p>` : '';
   const history = mode === 'watched' ? `<div class="watched-date">Watched ${escapeHtml(item.watched_date)}</div>` : mode === 'waitlist' ? `<div class="white-list-date">Saved ${escapeHtml(item.white_list_date)}</div>` : '';
   const badge = item.has_new_seasons ? '<span class="new-season-badge">Unwatched seasons</span>' : '';
-  return `<article class="result-card ${item.has_new_seasons ? 'has-new-seasons' : ''}" tabindex="0" role="button" aria-label="Details for ${escapeHtml(title)}" data-action="view-details" ${attrs}>${buttons}${badge}${poster}<div class="result-info"><div class="result-title">${escapeHtml(title)}</div><div class="result-meta"><span class="result-year">${escapeHtml(year)} · ${kind === 'tv' ? 'TV' : 'Movie'}</span><span class="result-rating">${rating}</span></div><div class="result-overview">${escapeHtml(item.overview || 'No overview available.')}</div>${history}</div></article>`;
+  return `<article class="result-card ${item.has_new_seasons ? 'has-new-seasons' : ''}" tabindex="0" role="button" aria-label="Details for ${escapeHtml(title)}" data-action="view-details" ${proposal ? `data-proposal-id="${escapeHtml(proposal.proposal_id)}"` : ''} ${attrs}>${buttons}${badge}${poster}<div class="result-info">${reviewInfo}<div class="result-title">${escapeHtml(title)}</div><div class="result-meta"><span class="result-year">${escapeHtml(year)} · ${kind === 'tv' ? 'TV' : 'Movie'}</span><span class="result-rating">${rating}</span></div><div class="result-overview">${escapeHtml(item.overview || 'No overview available.')}</div>${history}${proposal ? `<p class="review-detail-hint">Open for description and match details</p>${proposalActions(proposal.proposal_id)}` : ''}</div></article>`;
 }
 function notify(message, type = 'info', action) {
   const stack = document.getElementById('toast-stack');
@@ -1533,14 +1548,45 @@ async function saveResearch() {
     await refreshAi(); return research;
   } catch (error) { showError(`Research could not be saved: ${error}`); return null; }
 }
+function proposalActions(id) {
+  const disabled = reviewingProposals.has(id) ? 'disabled' : '';
+  return `<div class="proposal-actions"><button class="btn btn-primary" data-review="approve" data-proposal="${escapeHtml(id)}" ${disabled}>Approve</button><button class="btn btn-secondary" data-review="reject" data-proposal="${escapeHtml(id)}" ${disabled}>Remove</button></div>`;
+}
+function renderDetailActions(item, proposal) {
+  const target = document.getElementById('movie-details-actions');
+  if (proposal) { target.innerHTML = proposalActions(proposal.proposal_id); return; }
+  if (!item) { target.innerHTML = ''; return; }
+  const attrs = `data-id="${Number(item.id)}" data-type="${escapeHtml(item.content_type)}" data-title="${escapeHtml(item.title)}" data-overview="${escapeHtml(item.overview || '')}" data-poster-path="${escapeHtml(item.poster_path || '')}" data-date="${escapeHtml(item.release_date || '')}" data-vote-average="${Number(item.vote_average || 0)}"`;
+  target.innerHTML = ['watch', 'whitelist'].map(action => `<button class="btn btn-secondary detail-library-action" data-action="${action}" ${attrs}></button>`).join('');
+  updateWatchButton(item.id, item.content_type, watchedItems.some(i => i.id === item.id && i.content_type === item.content_type));
+  updateWhiteListButton(item.id, item.content_type, whiteListItems.some(i => i.id === item.id && i.content_type === item.content_type));
+}
 function renderProposals(proposals) {
   document.getElementById('proposal-count').textContent = proposals.length;
-  document.getElementById('proposal-list').innerHTML = proposals.length ? proposals.map(p => {
-    const item = p.item;
-    const isCurrent = p.research_id === aiWorkspace.research.id;
-    return `<div class="proposal"><div class="proposal-poster" data-action="view-details" data-id="${item.id}" data-type="${escapeHtml(item.content_type)}" data-title="${escapeHtml(item.title)}">${item.poster_path ? `<img src="https://image.tmdb.org/t/p/w185${escapeHtml(item.poster_path)}" alt="" loading="lazy">` : '<span>✦</span>'}</div><div class="proposal-info"><span class="eyebrow">${isCurrent ? 'CURRENT RESEARCH' : 'EARLIER RESEARCH'}</span><p class="requested-title">You listed: <strong>${escapeHtml(p.requested_title)}</strong></p><h3>${escapeHtml(item.title)} <span>(${escapeHtml(item.release_date.slice(0,4) || 'Year unknown')}) · ${item.content_type === 'tv' ? 'TV' : 'Movie'}</span></h3><p>${escapeHtml(p.reason)}</p><p class="proposal-overview">${escapeHtml(item.overview)}</p><button class="text-button" data-action="view-details" data-id="${item.id}" data-type="${escapeHtml(item.content_type)}" data-title="${escapeHtml(item.title)}">Check details ↗</button></div><div class="proposal-actions"><button class="btn btn-primary" data-review="approve" data-proposal="${escapeHtml(p.proposal_id)}">Approve</button><button class="btn btn-secondary" data-review="reject" data-proposal="${escapeHtml(p.proposal_id)}">Reject</button></div></div>`;
-  }).join('') : '<p class="queue-empty">No matches waiting for review. Your approved waitlist is shown below.</p>';
+  const key = JSON.stringify([aiWorkspace?.research.id, proposals]);
+  if (key === proposalRenderKey) return;
+  proposalRenderKey = key;
+  document.getElementById('proposal-list').innerHTML = proposals.length ? proposals.map(p => libraryCard(p.item, 'proposal', p)).join('') : '<p class="help-text review-empty">No matches to review yet. Paste your list in Reel Research and ask your connected agent to find titles.</p>';
+  if (activeProposalId && !proposals.some(p => p.proposal_id === activeProposalId)) closeMovieDetails();
 }
+async function reviewProposal(button) {
+  const id = button.dataset.proposal;
+  if (reviewingProposals.has(id)) return;
+  reviewingProposals.add(id);
+  const controls = document.querySelectorAll('[data-proposal]');
+  controls.forEach(b => { if (b.dataset.proposal === id) b.disabled = true; });
+  try {
+    await invoke('review_proposal', { proposalId: id, approve: button.dataset.review === 'approve' });
+    if (activeProposalId === id) closeMovieDetails();
+    await loadWhiteListItems(); displayWhiteListItems(); await refreshAi();
+    showSuccess(button.dataset.review === 'approve' ? 'Approved and saved to your waitlist' : 'Match removed from review');
+  } catch (error) { showError(String(error)); }
+  finally {
+    reviewingProposals.delete(id);
+    document.querySelectorAll('[data-proposal]').forEach(b => { if (b.dataset.proposal === id) b.disabled = false; });
+  }
+}
+
 function renderSuggestions(suggestions) {
   document.getElementById('picks-empty').hidden = suggestions.length > 0;
   document.getElementById('suggestion-list').innerHTML = [...suggestions].reverse().map(s => `<div class="suggestion"><div class="suggestion-label">${s.source === 'watched' ? '↻ REWATCH' : '☆ FROM YOUR WAITLIST'}</div>${libraryCard(s.item, 'browse')}<div class="suggestion-reason"><p>${escapeHtml(s.reason)}</p>${s.source === 'watched' ? `<span class="help-text">Last marked watched: ${escapeHtml(s.item.watched_date)}</span>` : ''}<button class="text-button" data-dismiss="${escapeHtml(s.suggestion_id)}">Dismiss pick</button></div></div>`).join('');
@@ -1648,11 +1694,11 @@ function setupNewFeatures() {
     const source = document.getElementById('pick-source').value;
     copyText(`Use MoviNight MCP get_library to suggest ${document.getElementById('pick-count').value} ${document.getElementById('pick-format').value.toLowerCase()} from my ${source === 'watched' ? 'watched history for a rewatch, prioritizing the oldest watched_date' : 'approved waitlist for something new, excluding anything already watched'}. Mood/genres/exclusions: ${document.getElementById('pick-mood').value || 'ask me'}. Time available: ${document.getElementById('pick-time').value || 'ask me'}. Language: ${document.getElementById('pick-language').value || 'any'}. Ask me to clarify preferences if needed. Check genres/runtime with get_title_details. Publish each pick with publish_suggestion using source=${source} and a useful reason. Do not change my library or watched dates.`);
   };
-  document.getElementById('proposal-list').addEventListener('click', async event => {
-    const button = event.target.closest('[data-review]'); if (!button) return;
-    const actions = button.closest('.proposal-actions'); actions.querySelectorAll('button').forEach(b => b.disabled = true);
-    try { await invoke('review_proposal', { proposalId: button.dataset.proposal, approve: button.dataset.review === 'approve' }); await loadWhiteListItems(); displayWhiteListItems(); await refreshAi(); showSuccess(button.dataset.review === 'approve' ? 'Approved and saved to your waitlist' : 'Match rejected'); }
-    catch (error) { showError(String(error)); actions.querySelectorAll('button').forEach(b => b.disabled = false); }
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-review]');
+    if (!button || button.disabled) return;
+    event.stopPropagation();
+    reviewProposal(button);
   });
   document.getElementById('suggestion-list').addEventListener('click', async event => {
     const button = event.target.closest('[data-dismiss]'); if (!button) return;
