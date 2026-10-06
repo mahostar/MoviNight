@@ -1,155 +1,153 @@
-![MoviNight](branding/logoGit.png)
+<div align="center">
 
-A modern, fast, and beautiful movie and TV show discovery application built with Tauri v2.
+<img src="branding/logoGit.png" alt="MoviNight" width="640">
 
-![Demo animation](branding/demo.gif)
+**Find your next movie. Keep your viewing history. Research with your AI agent.**
 
-## ✨ Features
+A desktop movie and TV companion built with **Tauri 2 · Rust · JavaScript**.
 
-- **🔍 Advanced Discovery**: Filter movies and TV shows by genre, year, language, and streaming providers
-- **🔎 Smart Search**: Search by title across both movies and TV shows simultaneously  
-- **📋 Watchlist Management**: Keep track of what you want to watch and what you've already seen
-- **🎬 Trailer Integration**: Watch trailers directly in the app with embedded YouTube player
-- **📱 Responsive Design**: Beautiful UI that works on all screen sizes
-- **⚡ Fast & Lightweight**: Built with Rust backend for optimal performance
-- **🔒 Secure**: Your data stays local - no cloud sync required
-- **🌐 Cross-Platform**: Works on Windows, macOS, and Linux
+[Explore the features](#what-you-can-do) · [Connect an AI agent](MCP_GUIDE.md) · [Build the app](#development) · [Report an issue](https://github.com/mahostar/MoviNight/issues)
 
-## Version 1.1.0
+</div>
 
-Discover now uses compact dropdown filters with **match-any** genres, refreshed API caching, paginated title search, accessible rainbow card rims, and dismissible notifications.
+![MoviNight demo](branding/demo.gif)
 
-**Reel Research** stores pasted titles/tables for a connected AI agent. Start the local **MCP Server** in Settings, configure your client, and copy the agent guide. AI matches stay in a separate review queue until you approve them in Waitlist. **AI Picks** holds recommendations from your existing watched history or approved waitlist.
+### A closer look
 
-See [MCP_GUIDE.md](MCP_GUIDE.md) for connection examples, tools, prompts, and cache rules. There is no embedded AI model: research and recommendation reasoning come from your connected MCP client.
+**Discover** — compact filters, movie and TV results, and a library that stays on your device.
 
-### Safe upgrades
+![Discover movies and TV shows in MoviNight](branding/screenshots/discover.png)
 
-Install the 1.1.0 installer over the existing app using the same installation scope. The application identifier (`com.movinight.app`) and saved-data folder (`%APPDATA%\movinight` on Windows) are unchanged. No uninstall or cache cleanup is needed. Existing watched dates and tracked seasons are retained. Atomic writes preserve the last good file, originals are backed up under `backups/before-1.1.0`, and Settings offers a manual library backup. AI data is in a separate `ai_workspace.json`. If a saved file cannot be parsed, the app reports the error instead of replacing it.
+**Reel Research** — paste titles or tables, give your agent instructions, and review its matches.
 
-### Validation
+![Reel Research workspace](branding/screenshots/reel-research.png)
 
-- `npm run check`: JavaScript syntax.
-- `npm run test:backend`: storage compatibility, backup preservation, genre union, cache expiry/coalescing, approval idempotency, and MCP protocol/security tests.
-- `npm run build`: production Tauri installers.
+**Streaming platforms** — find providers quickly in a searchable popup.
 
-The optional `tests/runtime-check.cjs` and `tests/responsive-check.cjs` use Playwright against a **debug-only isolated** Tauri WebView on port 9229. Install Playwright separately or set `MOVINIGHT_PLAYWRIGHT_PATH` to an existing Playwright module. Launch a debug build with `MOVINIGHT_QA_DATA_DIR` set to the absolute `.qa-data` directory, `WEBVIEW2_USER_DATA_FOLDER` set to an isolated WebView profile, and `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9229`. Copy your saved files into `.qa-data` first. The QA directory and screenshots are ignored by Git. These tests stage and approve titles only in that isolated library. Release builds ignore the QA data-directory override.
+![Searchable streaming platform picker](branding/screenshots/streaming-platforms.png)
 
-### Development
+**MCP documentation** — copy the complete connection and tool guide straight from Settings.
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/mahostar/movinight
-   cd movinight
-   ```
+![MCP settings with the Copy documentation button](branding/screenshots/mcp-documentation.png)
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+**Offline storage** — control downloads, set a disk limit, and clear only Discover cache.
 
-3. **Start development server**
-   ```bash
-   cargo tauri dev
-   ```
+![Offline storage settings](branding/screenshots/offline-storage.png)
 
-### Building for Production
+*Screenshots use demo data and sample research.*
 
-Build the application for your platform:
+## What you can do
 
-```bash
-cargo tauri build
-```
+| Feature | How it helps |
+| --- | --- |
+| **Offline library** | Keep fetched metadata, posters and thumbnails locally. Browse downloaded Discover pages offline; online requests still refresh from TMDB. |
+| **Cache controls** | Enable or disable caching, choose a 1–5 GB cap (4 GB default), and clear only Discover cache while preserving saved-library downloads. |
+| **Comfortable display** | Adjust and save app zoom from 75% to 175% in Settings. |
+| **Streaming & languages** | Search large lists in dedicated popups, with familiar streaming platforms first. |
+| **Discover & search** | Filter by year, genre, language, rating and providers. Selected genres match **any** selection. Search both movies and TV shows by name. |
+| **Waitlist & watched history** | Save titles for later, record watched dates, and track watched TV seasons. |
+| **Cleaner discovery** | Optionally hide missing posters and titles rated exactly 0 or 10, alongside the animation filter. |
+| **Title details** | Browse metadata, seasons and trailers from TMDB. |
+| **Reel Research** | Save pasted lists or tables locally. A connected AI agent searches TMDB and proposes verified matches for your approval. |
+| **AI Picks** | Request recommendations from your approved waitlist or revisits from your watched history. |
+| **Copy documentation** | Open **Settings → MCP Server → Copy documentation**. Copy the entire guide even while the server is stopped. |
 
-Cleaning cache:
-```bash
-cd src-tauri
-```
-```bash
-cargo clean
-```
-```bash
-cd ..
-```
-```bash
+## Get started
+
+1. Install MoviNight using an installer built for your platform.
+2. Get a [TMDB API key](https://www.themoviedb.org/settings/api).
+3. Open **Settings → TMDB & library**, enter the key, and save.
+4. Explore **Discover**, add titles to **Waitlist**, and track them in **Watched**.
+
+### Bring your AI agent
+
+Open **Settings → MCP Server**, start the server, and configure a local MCP client with the displayed address and connection token. Use **Copy documentation** for the full setup guide, tool descriptions and example prompts.
+
+In **Reel Research**, paste your titles, save the batch, and copy the research prompt to your connected client. Review proposed matches in **Waitlist** before approving them.
+
+MoviNight does not include an AI model. Research and recommendations come from your connected client. The MCP server listens on loopback; remote services cannot connect to it directly. Agents can propose titles and publish picks, while approval stays in the app.
+
+See the [complete MCP guide](MCP_GUIDE.md).
+
+## Your library & upgrades
+
+Install **1.2.0** over your existing installation using the same installation scope. The app identifier and saved-data location remain the same; uninstalling or clearing your library is unnecessary.
+
+On Windows, data lives in **%APPDATA%\movinight**:
+
+| File | Contents |
+| --- | --- |
+| watched.json | Watched titles, dates and tracked seasons |
+| white_list.json | Approved waitlist |
+| config.json | Local TMDB configuration |
+| ai_workspace.json | Research, proposals and AI suggestions |
+
+Writes are atomic. Original library files are preserved under **backups/before-1.1.0**, and the last valid file is kept as a **.bak** copy. Malformed files are preserved and reported rather than overwritten. Create an additional timestamped backup through **Settings → Back up library**.
+
+## Offline storage
+
+The offline cache uses a SQLite index and disk objects under **%APPDATA%\\movinight\\offline**. It grows as you browse; the 4 GB default is a maximum, not a reserved allocation. Choose up to 5 GB in Settings. Old browsing entries are evicted first, with saved-library downloads given priority. The cap includes headroom for the index and atomic writes.
+
+Saved cards and watched dates already live locally. With caching enabled, the app downloads metadata and artwork for saved titles in the background; **Download saved library** lets you retry or complete those downloads. Viewed Discover/search pages, title details and reference lists are persisted with their full fetched JSON. Visible posters and provider thumbnails are downloaded at bounded sizes.
+
+Online requests use current TMDB responses (or the short-lived session cache). Persistent data is used only when a network connection fails or TMDB is unavailable, with a banner identifying cached data. Authentication and rate-limit failures are reported rather than covered by stale responses. Offline filters and pages must have been fetched previously; this is a personal cache of browsed content, not a complete TMDB mirror. Video trailers still need internet.
+
+**Clear Discover cache** removes only Discover responses and artwork used exclusively for browsing Discover. Other downloaded search/reference data remains. Downloaded metadata and images for saved-library titles remain, along with every watched/waitlist file. Disabling caching stops new downloads and offline fallback without deleting existing files.
+
+## Development
+
+Install Rust, Node.js, the Tauri CLI and the native Tauri prerequisites for your platform, then run:
+
+~~~bash
+git clone https://github.com/mahostar/MoviNight.git
+cd MoviNight
+npm install
 cargo tauri dev
-```
+~~~
 
-This will create platform-specific installers in `src-tauri/target/release/bundle/`.
+The frontend source lives in **dist/** and is embedded by Tauri.
 
-## 🛠️ Tech Stack
+### Check & build
 
-- **Frontend**: HTML5, CSS3, Vanilla JavaScript
-- **Backend**: Rust with Tauri v2
-- **API**: The Movie Database (TMDB) API
-- **HTTP Client**: reqwest
-- **Data Storage**: Local JSON files
-- **UI Framework**: Custom responsive design
+~~~bash
+npm run check
+npm run test:backend
+npm run build
+~~~
 
-## 📱 Supported Platforms
+Production installers are written to **src-tauri/target/release/bundle/**. Windows builds produce NSIS and MSI installers; other platforms require their own native build environment.
 
-- ✅ Windows 7+
-- ✅ macOS 10.15+
-- ✅ Linux (most distributions)
+Backend checks cover storage compatibility, backups, genre union, cache expiry and request coalescing, approval idempotency, and MCP protocol/security behavior.
 
-## 🔧 Configuration
+<details>
+<summary>Optional WebView runtime checks</summary>
 
-1. **Get TMDB API Key**
-   - Visit [TMDB API Settings](https://www.themoviedb.org/settings/api)
-   - Create a free account and request an API key
+The Playwright scripts in **tests/** connect to an isolated debug WebView on port 9229. Install Playwright or set **MOVINIGHT_PLAYWRIGHT_PATH** to an existing module.
 
-2. **Set API Key**
-   - Open MoviNight
-   - Click the settings gear icon (⚙️)
-   - Enter your TMDB API key
-   - Click Save
+Set **MOVINIGHT_QA_DATA_DIR** to an absolute isolated data directory, **WEBVIEW2_USER_DATA_FOLDER** to a separate WebView profile, and **WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS** to **--remote-debugging-port=9229** before launching the debug executable. Copy test library files into the isolated directory first.
 
-## 📁 Project Structure
+Then run **npm run test:runtime** and **npm run test:responsive**. Runtime checks stage and approve titles in that test library. Release builds ignore the QA data-directory override.
 
-```
-MoviNight/
-├── src-tauri/          # Rust backend
-│   ├── src/
-│   │   ├── lib.rs      # Main application logic
-│   │   └── main.rs     # Entry point
-│   ├── icons/          # App icons
-│   ├── Cargo.toml      # Rust dependencies
-│   └── tauri.conf.json # Tauri configuration
-├── dist/              # Frontend source embedded by Tauri
-│   ├── index.html     # Pages and controls
-│   ├── main.js        # UI state and interactions
-│   ├── styles.css     # Responsive styles
-│   └── logo.png       # Original application branding
-├── MCP_GUIDE.md        # Local agent connection and workflows
-└── README.md          # This file
-```
+</details>
 
-## 🎯 Usage
+### Project layout
 
-1. **Discovery**: Browse trending and popular content with advanced filters
-2. **Search**: Find specific movies or TV shows by name
-3. **Watchlist**: Add items to your white list for later viewing
-4. **Tracking**: Mark content as watched to keep track of your viewing history
-5. **Details**: Click any item to see full details, trailers, and metadata
+~~~text
+dist/                       Frontend HTML, JavaScript and CSS
+src-tauri/src/
+  lib.rs                    App commands and library behavior
+  api.rs                    TMDB client and response cache
+  ai.rs                     Research, proposals and suggestions
+  mcp.rs                    Local MCP transport and tools
+  storage.rs                Atomic persistence and backups
+  offline.rs                SQLite index, image downloads and bounded eviction
+branding/                   Original branding, demo and screenshots
+tests/                      WebView runtime and layout checks
+MCP_GUIDE.md                 Client setup and agent workflows
+~~~
 
-## 🤝 Contributing
+## Contributing & credits
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Issues and pull requests are welcome. MoviNight uses [TMDB](https://www.themoviedb.org/) for movie and TV data, [Tauri](https://tauri.app/) for the desktop shell, and [Rust](https://www.rust-lang.org/) for the backend.
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [The Movie Database (TMDB)](https://www.themoviedb.org/) for providing the API
-- [Tauri](https://tauri.app/) for the amazing framework
-- [Rust](https://www.rust-lang.org/) for the powerful backend
-
-## 📞 Support
-
-If you have any questions or need help, please open an issue on GitHub.
-
----
-
-**Built with ❤️ by Mahostar** 
+Licensed under [MIT](LICENSE). Built by [Mahostar](https://github.com/mahostar).

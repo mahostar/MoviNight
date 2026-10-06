@@ -91,6 +91,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initializeElements();
   setupEventListeners();
   setupNewFeatures();
+  setupOfflineCache();
   initializeYearRange();
   document.getElementById('sort-by').value = 'popularity.desc';
   await loadApiKey();
@@ -278,6 +279,7 @@ async function loadWatchedItems() {
   try {
     watchedItems = await invoke('get_watched_items');
     updateWatchedStats();
+    scheduleOfflineLibrary();
   } catch (error) {
     console.error('Failed to load watched items:', error);
     showError(`Could not load watched history: ${error}`);
@@ -332,6 +334,7 @@ async function loadWhiteListItems() {
   try {
     whiteListItems = await invoke('get_white_list_items');
     updateWhiteListStats();
+    scheduleOfflineLibrary();
   } catch (error) {
     console.error('Failed to load white list items:', error);
     showError(`Could not load waitlist: ${error}`);
@@ -675,17 +678,23 @@ function toggleLanguage(langCode) {
     chip.classList.toggle('selected', (chip.dataset.id || null) === selectedLanguage);
     chip.setAttribute('aria-pressed', String((chip.dataset.id || null) === selectedLanguage));
   });
-  document.getElementById('language-dropdown').open = false;
+  document.getElementById('language-dialog').close();
   updateFilterSummary();
 }
 
+// Familiar direct subscriptions first; channel bundles remain searchable below.
+function providerRank(provider) {
+  const popular = ['Netflix','Amazon Prime Video','Disney Plus','Hulu','HBO Max','Max','Apple TV','Apple TV Plus','Paramount Plus','Peacock Premium','Crunchyroll','YouTube Premium','Tubi TV','Pluto TV'];
+  const rank = popular.indexOf(provider.provider_name);
+  return rank < 0 ? popular.length : rank;
+}
 async function loadWatchProviders() {
   const type = currentContentType;
   try {
     providersContainer.textContent = 'Loading providers…';
     const providers = await invoke('get_watch_providers', { contentType: type });
     if (type !== currentContentType) return;
-    providersContainer.innerHTML = providers.sort((a,b) => a.provider_name.localeCompare(b.provider_name)).map(provider => `<button class="provider-chip ${selectedProviders.includes(provider.provider_id) ? 'selected' : ''}" data-id="${provider.provider_id}" aria-pressed="${selectedProviders.includes(provider.provider_id)}">${provider.logo_path ? `<img src="https://image.tmdb.org/t/p/w92${escapeHtml(provider.logo_path)}" alt="" loading="lazy">` : ''}${escapeHtml(provider.provider_name)}</button>`).join('');
+    providersContainer.innerHTML = providers.sort((a,b) => providerRank(a) - providerRank(b) || a.provider_name.localeCompare(b.provider_name)).map(provider => `<button class="provider-chip ${selectedProviders.includes(provider.provider_id) ? 'selected' : ''}" data-id="${provider.provider_id}" aria-pressed="${selectedProviders.includes(provider.provider_id)}">${provider.logo_path ? `<img src="https://image.tmdb.org/t/p/w92${escapeHtml(provider.logo_path)}" alt="" loading="lazy">` : ''}${escapeHtml(provider.provider_name)}</button>`).join('');
     providersContainer.querySelectorAll('.provider-chip').forEach(chip => chip.addEventListener('click', () => toggleProvider(Number(chip.dataset.id))));
     updateFilterSummary();
   } catch (error) { if (type === currentContentType) providersContainer.textContent = `Could not load providers: ${error}`; }
@@ -731,7 +740,8 @@ async function performSearch() {
     excludeAnimation: excludeAnimation,
     watchProviders: [...selectedProviders],
     originalLanguage: selectedLanguage,
-    minRating: minRating
+    minRating: minRating,
+    hideIncomplete: document.getElementById('hide-incomplete').checked
   };
 
   document.querySelectorAll('.filter-dropdown').forEach(d => d.open = false);
@@ -747,6 +757,10 @@ async function loadMoreResults() {
   if (currentPage < totalPages && !document.getElementById('view-more-btn').disabled) await searchContent(true);
 }
 
+function isCompleteDiscoverTitle(item) {
+  const rating = Number(item.vote_average);
+  return Boolean(item.poster_path?.trim()) && Number.isFinite(rating) && rating > 0 && rating < 10;
+}
 async function searchContent(appendResults = false) {
   const generation = discoverGeneration;
   const type = currentContentType;
@@ -765,7 +779,7 @@ async function searchContent(appendResults = false) {
     if (generation !== discoverGeneration || type !== currentContentType) return;
     currentPage = page;
     totalPages = Math.min(500, response.total_pages);
-    const fresh = response.results.filter(item => !appendResults || !allResults.some(existing => existing.id === item.id));
+    const fresh = response.results.filter(item => (!filters.hideIncomplete || isCompleteDiscoverTitle(item)) && (!appendResults || !allResults.some(existing => existing.id === item.id)));
     allResults = appendResults ? [...allResults, ...fresh] : fresh;
     await displayResults({ ...response, results: allResults }, appendResults, fresh);
   } catch (error) {
@@ -808,12 +822,19 @@ function displayResults(response, isAppending = false, newResults = []) {
       emptyState.querySelector('p').textContent = 'Try adjusting your filters or search criteria.';
     emptyState.style.display = 'block';
     }
+    if (currentFilters.hideIncomplete && currentPage < totalPages) {
+      emptyState.querySelector('h3').textContent = 'No eligible titles on this page';
+      emptyState.querySelector('p').textContent = 'Load more titles or turn off the incomplete-title filter.';
+      emptyState.style.display = 'block';
+      viewMoreContainer.style.display = 'flex';
+    }
     return;
   }
+  emptyState.style.display = 'none';
 
   // Show results header
   resultsHeader.style.display = 'block';
-  resultsInfo.textContent = `Showing ${allResults.length.toLocaleString()} of ${response.total_results.toLocaleString()} results`;
+  resultsInfo.textContent = currentFilters.hideIncomplete ? allResults.length.toLocaleString() + ' titles shown · incomplete titles hidden' : 'Showing ' + allResults.length.toLocaleString() + ' of ' + response.total_results.toLocaleString() + ' results';
 
   // Render results
   if (isAppending) {
@@ -1449,10 +1470,20 @@ async function loadNamePage(append) {
   }
 }
 async function copyText(text) {
-  try { await navigator.clipboard.writeText(text); showSuccess('Copied to clipboard'); }
-  catch { // Desktop WebViews can lack the async clipboard API.
-    const area = document.createElement('textarea'); area.value = text; area.style.position = 'fixed'; area.style.opacity = '0'; document.body.append(area); area.select();
-    const copied = document.execCommand('copy'); area.remove(); if (copied) showSuccess('Copied to clipboard'); else showError('Clipboard is unavailable. Select the text and copy it manually.');
+  try {
+    await navigator.clipboard.writeText(text);
+    showSuccess('Copied to clipboard');
+    return true;
+  } catch { // Desktop WebViews can lack the async clipboard API.
+    const area = document.createElement('textarea');
+    area.value = text; area.style.position = 'fixed'; area.style.opacity = '0';
+    document.body.append(area); area.select();
+    let copied = false;
+    try { copied = document.execCommand('copy'); } catch { /* Report below. */ }
+    finally { area.remove(); }
+    if (copied) showSuccess('Copied to clipboard');
+    else showError('Clipboard is unavailable. Select the text and copy it manually.');
+    return copied;
   }
 }
 function selectSettings(panel) {
@@ -1515,6 +1546,53 @@ function renderSuggestions(suggestions) {
   document.getElementById('suggestion-list').innerHTML = [...suggestions].reverse().map(s => `<div class="suggestion"><div class="suggestion-label">${s.source === 'watched' ? '↻ REWATCH' : '☆ FROM YOUR WAITLIST'}</div>${libraryCard(s.item, 'browse')}<div class="suggestion-reason"><p>${escapeHtml(s.reason)}</p>${s.source === 'watched' ? `<span class="help-text">Last marked watched: ${escapeHtml(s.item.watched_date)}</span>` : ''}<button class="text-button" data-dismiss="${escapeHtml(s.suggestion_id)}">Dismiss pick</button></div></div>`).join('');
 }
 function setupNewFeatures() {
+  const zoomInput = document.getElementById('app-zoom');
+  function applyZoom(value) {
+    const scale = Number(value);
+    const zoom = Number.isFinite(scale) ? Math.min(175, Math.max(75, Math.round(scale / 5) * 5)) : 100;
+    document.documentElement.style.zoom = zoom / 100;
+    document.documentElement.style.setProperty('--app-zoom', String(zoom / 100));
+    zoomInput.value = zoom;
+    document.getElementById('zoom-value').textContent = zoom + '%';
+    try { localStorage.setItem('movinight-zoom', String(zoom)); } catch { /* Current session still works. */ }
+  }
+  let savedZoom = 100;
+  try { savedZoom = localStorage.getItem('movinight-zoom') || 100; } catch { /* Use default. */ }
+  applyZoom(savedZoom);
+  zoomInput.oninput = () => applyZoom(zoomInput.value);
+  document.getElementById('zoom-out').onclick = () => applyZoom(Number(zoomInput.value) - 5);
+  document.getElementById('zoom-in').onclick = () => applyZoom(Number(zoomInput.value) + 5);
+  document.getElementById('zoom-reset').onclick = () => applyZoom(100);
+  for (const kind of ['providers','language']) {
+    const dialog = document.getElementById(kind + '-dialog');
+    const search = document.getElementById(kind + '-search');
+    const container = document.getElementById(kind + '-container');
+    function filterOptions() {
+      const query = search.value.trim().toLocaleLowerCase();
+      let matches = 0;
+      container.querySelectorAll('button').forEach(button => {
+        button.hidden = !button.textContent.toLocaleLowerCase().includes(query);
+        if (!button.hidden) matches++;
+      });
+      document.getElementById(kind + '-no-results').hidden = matches !== 0 || !container.querySelector('button');
+    }
+    search.oninput = filterOptions;
+    new MutationObserver(filterOptions).observe(container, { childList: true });
+    document.getElementById(kind + '-picker').onclick = () => {
+      document.querySelectorAll('.filter-dropdown').forEach(d => d.open = false);
+      search.value = ''; filterOptions(); dialog.showModal(); search.focus();
+    };
+    document.querySelectorAll('[data-close-picker="' + kind + '"]').forEach(button => button.onclick = () => dialog.close());
+    dialog.addEventListener('click', event => {
+      const box = dialog.getBoundingClientRect();
+      if (event.target === dialog && (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom)) dialog.close();
+    });
+    document.getElementById(kind + '-clear').onclick = () => {
+      if (kind === 'language') toggleLanguage(null);
+      else { [...selectedProviders].forEach(toggleProvider); updateFilterSummary(); }
+    };
+  }
+
   document.getElementById('research-nav').onclick = () => switchPage('research');
   document.getElementById('picks-nav').onclick = () => switchPage('picks');
   document.querySelectorAll('.filter-dropdown').forEach(dropdown => dropdown.addEventListener('toggle', () => {
@@ -1528,7 +1606,7 @@ function setupNewFeatures() {
   document.getElementById('reset-filters').onclick = () => {
     selectedGenres = []; selectedProviders = []; selectedLanguage = null;
     document.getElementById('year-from').value = ''; document.getElementById('year-to').value = '';
-    document.getElementById('sort-by').value = 'popularity.desc'; document.getElementById('min-rating').value = '0'; document.getElementById('exclude-animation').checked = false;
+    document.getElementById('sort-by').value = 'popularity.desc'; document.getElementById('min-rating').value = '0'; document.getElementById('exclude-animation').checked = false; document.getElementById('hide-incomplete').checked = false;
     genresContainer.querySelectorAll('button').forEach(b => {b.classList.remove('selected'); b.setAttribute('aria-pressed','false');});
     providersContainer.querySelectorAll('button').forEach(b => {b.classList.remove('selected'); b.setAttribute('aria-pressed','false');});
     toggleLanguage(null); updateFilterSummary(); performSearch();
@@ -1541,7 +1619,18 @@ function setupNewFeatures() {
   };
   document.getElementById('stop-mcp').onclick = async () => { await invoke('stop_mcp'); await refreshMcp(); };
   document.getElementById('copy-mcp-token').onclick = () => { if (mcpConnection?.running) copyText(mcpConnection.token); };
-  document.getElementById('copy-mcp-guide').onclick = () => copyText(mcpConnection?.documentation || 'Open Settings to load the guide.');
+  document.getElementById('copy-mcp-guide').onclick = async () => {
+    const button = document.getElementById('copy-mcp-guide');
+    const status = document.getElementById('copy-guide-status');
+    button.disabled = true; status.textContent = '';
+    try {
+      const documentation = mcpConnection?.documentation || (await invoke('mcp_status')).documentation;
+      if (!documentation) throw new Error('Documentation could not be loaded. Please try again.');
+      if (await copyText(documentation)) status.textContent = 'Documentation copied. Paste it into your AI client or notes.';
+      else status.textContent = 'Copy failed. Expand the guide below to select and copy the text.';
+    } catch (error) { status.textContent = String(error); showError(String(error)); }
+    finally { button.disabled = false; }
+  };
   document.getElementById('backup-library').onclick = async () => {
     try { const path = await invoke('backup_library'); document.getElementById('backup-status').textContent = `Backup saved: ${path}`; showSuccess('Library backup created'); } catch (error) { showError(String(error)); }
   };
@@ -1570,4 +1659,110 @@ function setupNewFeatures() {
     try { await invoke('dismiss_suggestion', { suggestionId: button.dataset.dismiss }); await refreshAi(); } catch (error) { showError(String(error)); }
   });
   setInterval(() => { if (['research','picks','white-list'].includes(currentPageType) && !document.hidden) refreshAi(); }, 4000);
+}
+
+
+// The JSON library remains authoritative; this cache only stores fetched metadata and images.
+let offlineEnabled = true;
+let libraryDownloadTimer;
+let offlineClearInProgress = false;
+const offlineImages = new Map();
+function scheduleOfflineLibrary() {
+  clearTimeout(libraryDownloadTimer);
+  if (!offlineEnabled || offlineClearInProgress) return;
+  libraryDownloadTimer = setTimeout(async () => {
+    try { const result=await invoke('prepare_offline_library'); if (result === 'Already downloading your library') scheduleOfflineLibrary(); await refreshOfflineStatus(); } catch { /* Retry from Settings. */ }
+  }, 1800);
+}
+async function refreshOfflineStatus() {
+  try {
+    const status = await invoke('offline_status');
+    offlineEnabled = status.enabled;
+    document.getElementById('offline-enabled').checked = status.enabled;
+    document.getElementById('offline-limit').value = status.limit_gb;
+    document.getElementById('offline-usage').textContent = (status.used_bytes / 1024 / 1024).toFixed(1) + ' MB used · ' + status.entries.toLocaleString() + ' cached objects' + (status.syncing ? ' · Downloading library ' + status.completed + '/' + status.total : '');
+    document.getElementById('offline-clear').disabled = status.syncing || offlineClearInProgress;
+    document.getElementById('offline-download').disabled = status.syncing || !status.enabled;
+    const banner = document.getElementById('offline-banner');
+    banner.hidden = !status.offline;
+    banner.textContent = 'TMDB is unavailable · showing downloaded data when available' + (status.cached_at ? ' · cached ' + new Date(status.cached_at).toLocaleString() : '') + '. New filters and trailers may need internet.';
+  } catch (error) { document.getElementById('offline-usage').textContent = String(error); }
+}
+function setupOfflineCache() {
+  const inflight = new Map();
+  const queue = [];
+  let active = 0;
+  function drain() {
+    while (active < 4 && queue.length) {
+      const {key,path,size,origin,resolve,reject} = queue.shift(); active++;
+      invoke('cache_image',{path,size,origin}).then(resolve,reject).finally(()=>{active--;inflight.delete(key);drain();});
+    }
+  }
+  function localImage(path,size) {
+    const origin=currentPageType==='discover'?'discover':'other';
+    const key=origin+size+path;
+    if (offlineImages.has(key)) return Promise.resolve(offlineImages.get(key));
+    if (inflight.has(key)) return inflight.get(key);
+    const promise=new Promise((resolve,reject)=>queue.push({key,path,size,origin,resolve,reject})).then(data=>{
+      if (offlineImages.size>=120) offlineImages.delete(offlineImages.keys().next().value);
+      offlineImages.set(key,data);return data;
+    });
+    inflight.set(key,promise);drain();return promise;
+  }
+  const observer = new IntersectionObserver(entries => {
+    for (const entry of entries) if (entry.isIntersecting) {
+      const image=entry.target;observer.unobserve(image);
+      if (!offlineEnabled || offlineClearInProgress) continue;
+      const source=image.getAttribute('src');
+      const match=source?.match(/^https:\/\/image\.tmdb\.org\/t\/p\/(w\d+|original)(\/[^/?#]+)$/);
+      if (!match) continue;
+      const size=match[1]==='w92'?'w92':match[1]==='w780'?'w780':'w342';
+      localImage(match[2],size).then(data=>{if(image.isConnected && image.getAttribute('src')===source)image.src=data;}).catch(()=>{ /* Keep original URL if nothing is cached. */ });
+    }
+  },{rootMargin:'150px'});
+  function watchImages(node) {
+    if (node.nodeType!==1) return;
+    if (node.matches('img[src^="https://image.tmdb.org/"]')) observer.observe(node);
+    node.querySelectorAll('img[src^="https://image.tmdb.org/"]').forEach(image=>observer.observe(image));
+  }
+  new MutationObserver(records=>{
+    for(const record of records) {
+      if(record.type==='attributes')watchImages(record.target);
+      else record.addedNodes.forEach(watchImages);
+    }
+  }).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['src']});
+  watchImages(document.body);
+  async function updateSettings() {
+    const enabled=document.getElementById('offline-enabled').checked;
+    try {
+      await invoke('set_offline_limit',{enabled,limitGb:Number(document.getElementById('offline-limit').value)});
+      offlineEnabled=enabled;
+      if(!enabled)clearTimeout(libraryDownloadTimer);
+      offlineImages.clear();await refreshOfflineStatus();
+      if(enabled){watchImages(document.body);scheduleOfflineLibrary();}
+    }catch(error){showError(String(error));await refreshOfflineStatus();}
+  }
+  document.getElementById('offline-enabled').onchange=updateSettings;
+  document.getElementById('offline-limit').onchange=updateSettings;
+  document.getElementById('offline-download').onclick=async()=>{
+    const button=document.getElementById('offline-download');button.disabled=true;
+    try{showSuccess('Downloading metadata and images for your saved library.');const message=await invoke('prepare_offline_library');showSuccess(message);}
+    catch(error){showError(String(error));}finally{await refreshOfflineStatus();}
+  };
+  document.getElementById('offline-clear').onclick=async()=>{
+    offlineClearInProgress=true;clearTimeout(libraryDownloadTimer);
+    document.getElementById('offline-clear').disabled=true;
+    // Let current image requests finish before clearing; prevents immediate refill.
+    while(active || queue.length) await new Promise(resolve=>setTimeout(resolve,100));
+    try{await invoke('clear_offline_cache');offlineImages.clear();showSuccess('Discover cache cleared. Saved-library downloads and your lists are preserved.');}
+    catch(error){showError(String(error));}
+    finally{offlineClearInProgress=false;await refreshOfflineStatus();}
+  };
+  window.addEventListener('online',async()=>{
+    await invoke('clear_api_cache');await refreshOfflineStatus();
+    if(currentPageType==='discover')performSearch();
+    scheduleOfflineLibrary();watchImages(document.body);
+  });
+  refreshOfflineStatus();
+  setInterval(refreshOfflineStatus,4000);
 }

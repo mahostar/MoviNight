@@ -11,8 +11,18 @@ struct Entry {
     value: Value,
     expires: Instant,
 }
+pub fn disk_key(path: &str, params: &[(String, String)]) -> String {
+    let mut params = params.to_vec();
+    params.sort();
+    format!(
+        "tmdb:{path}:en-US:{}",
+        serde_json::to_string(&params).unwrap()
+    )
+}
 pub struct TmdbClient {
     client: reqwest::Client,
+    pub image_client: reqwest::Client,
+    pub offline: crate::offline::OfflineStore,
     base_url: String,
     cache: Mutex<HashMap<String, Entry>>,
     flights: Mutex<HashMap<String, std::sync::Weak<tokio::sync::Mutex<()>>>>,
@@ -25,6 +35,11 @@ impl TmdbClient {
                 .timeout(Duration::from_secs(20))
                 .build()
                 .unwrap(),
+            image_client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(12))
+                .build()
+                .unwrap(),
+            offline: crate::offline::OfflineStore::new(),
             cache: Mutex::new(HashMap::new()),
             flights: Mutex::new(HashMap::new()),
         }
@@ -80,15 +95,50 @@ impl TmdbClient {
                 return Ok(serde_json::from_value(v)?);
             }
         }
-        let value: Value = self
-            .client
-            .get(url)
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
+        let disk_key = disk_key(path, params);
+        let epoch = self.offline.epoch.load(std::sync::atomic::Ordering::SeqCst);
+        let fetched = async {
+            self.client
+                .get(url)
+                .send()
+                .await?
+                .error_for_status()?
+                .json::<Value>()
+                .await
+        }
+        .await;
+        let value = match fetched {
+            Ok(value) => {
+                self.offline
+                    .offline
+                    .store(false, std::sync::atomic::Ordering::Relaxed);
+                value
+            }
+            Err(error) => {
+                // Authentication, validation and rate-limit failures must never be hidden by old data.
+                let unavailable = error.is_connect()
+                    || error.is_timeout()
+                    || error.status().is_some_and(|s| s.is_server_error());
+                if unavailable {
+                    self.offline
+                        .offline
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                    if let Some(value) = self.offline.load_json(&disk_key) {
+                        return Ok(serde_json::from_value(value)?);
+                    }
+                    return Err(ApiError::Invalid("Offline: this page or title has not been downloaded. Reconnect to fetch it, or return to previously browsed filters.".into()));
+                }
+                return Err(error.into());
+            }
+        };
         let parsed = serde_json::from_value(value.clone())?;
+        if epoch == self.offline.epoch.load(std::sync::atomic::Ordering::SeqCst) {
+            self.offline.save_json(
+                &disk_key,
+                &value,
+                if path.starts_with("discover/") { 0 } else { 2 },
+            );
+        }
         let ttl = if path.starts_with("genre/")
             || path.starts_with("configuration/")
             || path.starts_with("watch/providers/")
@@ -461,6 +511,70 @@ mod tests {
             .is_err());
         assert_eq!(state.http.cache.lock().unwrap().len(), 1);
         server.abort();
+    }
+    #[tokio::test]
+    async fn persistent_fallback_does_not_cover_fresh_online_data_or_auth_errors() {
+        use axum::{http::StatusCode, response::IntoResponse, routing::get, Json, Router};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let mode = Arc::new(AtomicUsize::new(1));
+        let handler = mode.clone();
+        let router=Router::new().route("/discover/movie",get(move || {
+            let mode=handler.clone();
+            async move {
+                let mode=mode.load(Ordering::SeqCst);
+                if mode==401{return StatusCode::UNAUTHORIZED.into_response()}
+                Json(serde_json::json!({"version":mode,"results":[],"homepage":"https://example.org","extra":{"preserved":true}})).into_response()
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let mut client = TmdbClient::new();
+        client.base_url = format!("http://{address}");
+        let mut state = AppState {
+            api_key: Mutex::new(Some("private-test-key".into())),
+            data_lock: Mutex::new(()),
+            http: client,
+            mcp: Mutex::new(ServerControl::default()),
+        };
+        let first: Value = state
+            .http
+            .get(&state, "discover/movie", &[], true)
+            .await
+            .unwrap();
+        assert_eq!(first["version"], 1);
+        mode.store(2, Ordering::SeqCst);
+        let online: Value = state
+            .http
+            .get(&state, "discover/movie", &[], true)
+            .await
+            .unwrap();
+        assert_eq!(online["version"], 2);
+        mode.store(401, Ordering::SeqCst);
+        assert!(state
+            .http
+            .get::<Value>(&state, "discover/movie", &[], true)
+            .await
+            .is_err());
+        server.abort();
+        let _ = server.await;
+        state.http.clear();
+        let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        state.http.base_url = format!("http://{}", closed.local_addr().unwrap());
+        drop(closed);
+        let offline: Value = state
+            .http
+            .get(&state, "discover/movie", &[], true)
+            .await
+            .unwrap();
+        assert_eq!(offline, online);
+        assert!(state.http.offline.offline.load(Ordering::Relaxed));
+        assert!(state
+            .http
+            .get::<Value>(&state, "search/movie", &[], true)
+            .await
+            .is_err());
+        assert!(!disk_key("discover/movie", &[]).contains("private-test-key"));
     }
     #[test]
     fn genres_are_union_and_tv_dates_use_first_air_date() {

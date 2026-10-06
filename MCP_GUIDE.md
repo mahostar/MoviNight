@@ -1,6 +1,6 @@
 # MoviNight MCP — agent instructions
 
-MoviNight 1.1.0 includes an opt-in local MCP server using Streamable HTTP and JSON-RPC 2.0. The desktop app must remain open. Start it in Settings → MCP Server.
+MoviNight 1.2.0 includes an opt-in local MCP server using Streamable HTTP and JSON-RPC 2.0. The desktop app must remain open. Start it in Settings → MCP Server. Use **Copy documentation** in the same panel to copy this entire guide, even while the server is stopped.
 
 Endpoint: `http://127.0.0.1:37419/mcp`
 Authentication: `Authorization: Bearer <token shown in Settings>`
@@ -68,7 +68,7 @@ Call `publish_suggestion` with an existing library ID/type, `source` (`watched` 
 
 Existing `movinight/watched.json`, `white_list.json` and `config.json` locations are retained. On Windows this is normally `%APPDATA%\movinight`. Writes are atomic, malformed files are preserved, originals are copied to `backups/before-1.1.0/`, and the last valid file is also kept as `.bak`. Settings → Back up library makes another timestamped copy. AI work uses a separate `ai_workspace.json` file.
 
-Successful TMDB responses are cached in memory for 5 minutes (search/discovery), 6 hours (details/trailers) and 24 hours (reference lists). Identical requests in flight share a fetch. Errors and expired entries are not used as results. Refresh buttons bypass the cache by clearing it before fetching again. Streaming provider availability uses the US region.
+Successful TMDB responses are cached in memory for 5 minutes (search/discovery), 6 hours (details/trailers) and 24 hours (reference lists). Identical requests in flight share a fetch. Expired memory entries are never used as fresh results. With offline caching enabled, full successful responses and downloaded artwork persist on disk. Connection failures and TMDB server outages may return downloaded responses, identified in the app as offline data; authentication and rate-limit errors never use fallback. Settings provides a 4 GB default cap (up to 5 GB), an enable switch, saved-library downloads and Clear Discover cache. Clearing removes only Discover results and their artwork; other search/reference downloads, saved-library downloads and watched/waitlist files remain. Offline pages and filters must have been fetched before. Trailers require internet. Refresh buttons bypass the cache by clearing it before fetching again. Streaming provider availability uses the US region.
 
 Protocol reference: https://modelcontextprotocol.io/specification/2025-11-25/basic/transports
 Tools reference: https://modelcontextprotocol.io/specification/2025-11-25/server/tools

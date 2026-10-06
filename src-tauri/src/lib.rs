@@ -4,6 +4,7 @@ use tauri::State;
 mod ai;
 mod api;
 mod mcp;
+mod offline;
 mod storage;
 use ai::*;
 use api::*;
@@ -220,6 +221,8 @@ struct AppState {
 enum ApiError {
     #[error("No API key found. Set your TMDB API key in Settings.")]
     NoApiKey,
+    #[error("Offline cache error: {0}")]
+    Cache(String),
     #[error("{0}")]
     Invalid(String),
     #[error("TMDB request failed: {0}")]
@@ -240,14 +243,6 @@ impl serde::Serialize for ApiError {
     }
 }
 fn get_config_dir() -> Result<PathBuf, ApiError> {
-    // Debug-only isolation for runtime QA; release builds always use the established location.
-    #[cfg(debug_assertions)]
-    if let Some(test_dir) = std::env::var_os("MOVINIGHT_QA_DATA_DIR") {
-        let dir = PathBuf::from(test_dir);
-        std::fs::create_dir_all(&dir)?;
-        return Ok(dir);
-    }
-
     // Debug-only isolation for runtime QA; release builds always use the established location.
     #[cfg(debug_assertions)]
     if let Some(test_dir) = std::env::var_os("MOVINIGHT_QA_DATA_DIR") {
@@ -554,6 +549,11 @@ pub fn run() {
             get_tv_details,
             get_trailers,
             clear_api_cache,
+            offline::offline_status,
+            offline::set_offline_limit,
+            offline::clear_offline_cache,
+            offline::cache_image,
+            offline::prepare_offline_library,
             add_watched_item,
             remove_watched_item,
             get_watched_items,
