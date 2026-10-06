@@ -36,8 +36,10 @@
             ✅ Watched
           </button>
           <button class="nav-btn" id="white-list-nav" data-page="white-list">
-            ⭐ White List
+            ☆ Waitlist
           </button>
+          <button class="nav-btn" id="research-nav" data-page="research">✦ Reel Research</button>
+          <button class="nav-btn" id="picks-nav" data-page="picks">✧ AI Picks</button>
         </nav>
         <button class="settings-btn" id="settings-btn" title="Settings">
           ⚙️
@@ -51,31 +53,27 @@
             <h2>Settings</h2>
             <button class="modal-close" id="close-settings">×</button>
           </div>
-          <div class="modal-body">
-            <div class="form-group">
-              <label for="api-key-input">TMDB API Key:</label>
-              <input 
-                type="password" 
-                id="api-key-input" 
-                placeholder="Enter your TMDB API key..."
-                class="api-key-input"
-              />
-              <p class="help-text">
-                Get your free API key from 
-                <a href="https://www.themoviedb.org/settings/api" target="_blank">
-                  TMDB website
-                </a>
-              </p>
+          <div class="modal-body settings-body">
+            <div class="settings-tabs"><button class="settings-tab active" data-settings="api">TMDB & library</button><button class="settings-tab" data-settings="mcp">MCP Server</button></div>
+            <div id="settings-api-panel">
+              <div class="form-group"><label for="api-key-input">TMDB API key</label><input type="password" id="api-key-input" placeholder="Enter your TMDB API key" class="api-key-input" autocomplete="off"><p class="help-text">Get a free key from <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer">TMDB</a>.</p></div>
+              <div class="library-safety"><h3>Your library stays yours</h3><p>Existing watched dates, seasons and waitlist entries are preserved. Updates use the same saved-data folder, with backups before changes.</p><button class="btn btn-secondary" id="backup-library">Back up library</button><p id="backup-status" class="help-text" role="status"></p></div>
+              <div class="modal-actions"><button class="btn btn-secondary" id="cancel-settings">Cancel</button><button class="btn btn-primary" id="save-settings">Save API key</button></div>
             </div>
-            <div class="modal-actions">
-              <button class="btn btn-secondary" id="cancel-settings">Cancel</button>
-              <button class="btn btn-primary" id="save-settings">Save</button>
+            <div id="settings-mcp-panel" hidden>
+              <div class="mcp-heading"><h3>Connect your AI agent</h3><span class="status-pill" id="mcp-status">Stopped</span></div>
+              <p class="help-text">Start a local connection for Codex or another MCP client. Keep MoviNight open. Your agent can propose matches; you approve them here.</p>
+              <label for="mcp-url">Server address</label><input id="mcp-url" readonly class="api-key-input" value="http://127.0.0.1:37419/mcp">
+              <label for="mcp-token">Connection token</label><div class="token-row"><input id="mcp-token" readonly type="password" class="api-key-input" placeholder="Start the server to get a token"><button class="btn btn-secondary" id="copy-mcp-token">Copy token</button></div>
+              <div class="inline-actions"><button class="btn btn-primary" id="start-mcp">Start server</button><button class="btn btn-secondary" id="stop-mcp" disabled>Stop server</button><button class="btn btn-secondary" id="copy-mcp-guide">Copy agent guide</button></div>
+              <p class="help-text">Use Streamable HTTP and the token as a Bearer header. A local MCP client must be configured first; copying the guide alone does not connect it. Remote AI services cannot directly reach this address.</p>
+              <details class="guide-details"><summary>Connection instructions & tool guide</summary><pre id="mcp-guide"></pre></details>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Movie Details Modal -->
+      <!-- Movie Details Modal (with integrated Season Tracker for watched TV shows) -->
       <div class="modal-overlay" id="movie-details-modal">
         <div class="modal movie-details-modal">
           <div class="modal-header">
@@ -88,42 +86,71 @@
               <p>Loading movie details...</p>
             </div>
             <div class="movie-details-content" id="movie-details-content" style="display: none;">
-              <div class="movie-details-main">
-                <div class="movie-poster-container">
-                  <img id="movie-details-poster" src="" alt="Movie Poster" class="movie-details-poster" />
-                </div>
-                <div class="movie-info">
-                  <h1 id="movie-details-main-title" class="movie-title-large"></h1>
-                  <p id="movie-details-tagline" class="movie-tagline"></p>
-                  <div class="movie-meta">
-                    <span id="movie-details-year" class="movie-year"></span>
-                    <span id="movie-details-rating" class="movie-rating"></span>
-                    <span id="movie-details-type" class="movie-type"></span>
-                    <span id="movie-details-runtime" class="movie-runtime"></span>
+              <div class="details-split-layout">
+                <!-- LEFT: Movie/TV Details -->
+                <div class="details-left-column">
+                  <div class="movie-details-main">
+                    <div class="movie-poster-container">
+                      <img id="movie-details-poster" src="" alt="Movie Poster" class="movie-details-poster" />
+                    </div>
+                    <div class="movie-info">
+                      <h1 id="movie-details-main-title" class="movie-title-large"></h1>
+                      <p id="movie-details-tagline" class="movie-tagline"></p>
+                      <div class="movie-meta">
+                        <span id="movie-details-year" class="movie-year"></span>
+                        <span id="movie-details-rating" class="movie-rating"></span>
+                        <span id="movie-details-type" class="movie-type"></span>
+                        <span id="movie-details-runtime" class="movie-runtime"></span>
+                      </div>
+                      <div class="movie-genres" id="movie-details-genres"></div>
+                      <div class="movie-overview">
+                        <h3>Overview</h3>
+                        <p id="movie-details-overview"></p>
+                      </div>
+                    </div>
                   </div>
-                  <div class="movie-genres" id="movie-details-genres"></div>
-                  <div class="movie-overview">
-                    <h3>Overview</h3>
-                    <p id="movie-details-overview"></p>
+                  <div class="movie-trailer-section" id="movie-trailer-section" style="display: none;">
+                    <h3>Trailer</h3>
+                    <div class="trailer-container">
+                      <iframe
+                        id="trailer-iframe"
+                        width="100%"
+                        height="400"
+                        src=""
+                        frameborder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowfullscreen>
+                      </iframe>
+                    </div>
+                  </div>
+                  <div class="movie-no-trailer" id="movie-no-trailer" style="display: none;">
+                    <p>🎬 No trailer available for this content.</p>
                   </div>
                 </div>
-              </div>
-              <div class="movie-trailer-section" id="movie-trailer-section" style="display: none;">
-                <h3>Trailer</h3>
-                <div class="trailer-container">
-                  <iframe 
-                    id="trailer-iframe" 
-                    width="100%" 
-                    height="400" 
-                    src="" 
-                    frameborder="0" 
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                    allowfullscreen>
-                  </iframe>
+
+                <!-- RIGHT: Season Tracker (only shown for watched TV shows) -->
+                <div class="details-right-column" id="season-tracker-panel" style="display: none;">
+                  <div class="season-panel-header">
+                    <h3>📋 Season Tracker</h3>
+                  </div>
+                  <div class="season-tracker-loading" id="season-tracker-loading" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <p>Loading seasons...</p>
+                  </div>
+                  <div class="season-tracker-content" id="season-tracker-content" style="display: none;">
+                    <div class="season-tracker-summary" id="season-tracker-summary"></div>
+                    <div class="season-list" id="season-list">
+                      <!-- Season rows injected here -->
+                    </div>
+                    <div class="season-tracker-actions">
+                      <button class="btn btn-primary" id="season-tracker-save">💾 Save</button>
+                    </div>
+                  </div>
+                  <div class="season-tracker-error" id="season-tracker-error" style="display: none;">
+                    <div class="error-icon">❌</div>
+                    <p id="season-tracker-error-message"></p>
+                  </div>
                 </div>
-              </div>
-              <div class="movie-no-trailer" id="movie-no-trailer" style="display: none;">
-                <p>🎬 No trailer available for this content.</p>
               </div>
             </div>
             <div class="movie-details-error" id="movie-details-error" style="display: none;">
@@ -140,123 +167,22 @@
         <!-- Discover Page -->
         <div class="page-content" id="discover-page">
           <!-- Search Filters -->
-          <section class="search-section">
-            <div class="search-header">
-              <h2>Discover Content</h2>
-            </div>
-            
+          <section class="search-section compact-discover">
+            <div class="discover-heading"><div><span class="eyebrow">FIND YOUR NEXT FAVORITE</span><h2>Discover</h2></div><p>Less filtering. More watching.</p></div>
             <div class="search-filters">
-              <!-- Content Type Toggle -->
-              <div class="filter-group">
-                <label class="filter-label">Content Type:</label>
-                <div class="toggle-group">
-                  <button class="toggle-btn active" data-type="movie">Movies</button>
-                  <button class="toggle-btn" data-type="tv">TV Shows</button>
-                </div>
-              </div>
-
-              <!-- Genres Filter -->
-              <div class="filter-group">
-                <label class="filter-label">Genres:</label>
-                <div class="genres-container" id="genres-container">
-                  <div class="loading-text">Loading genres...</div>
-                </div>
-              </div>
-
-              <!-- Language Filter -->
-              <div class="filter-group">
-                <label class="filter-label">Language:</label>
-                <div class="language-container" id="language-container">
-                  <div class="loading-text">Loading languages...</div>
-                </div>
-              </div>
-
-              <!-- Watch Providers Filter -->
-              <div class="filter-group">
-                <label class="filter-label">Streaming On:</label>
-                <div class="providers-container" id="providers-container">
-                  <div class="loading-text">Loading providers...</div>
-                </div>
-              </div>
-
-              <!-- Year Range Filter -->
-              <div class="filter-group">
-                <label class="filter-label">Year Range:</label>
-                <div class="year-range">
-                  <div class="year-combo-wrapper">
-                    <label class="year-label">From:</label>
-                    <div class="year-combo" id="year-from-combo">
-                      <input type="number" id="year-from" class="year-combo-input" min="1900" max="2100" placeholder="Year" value="2015">
-                      <button class="year-combo-arrow" id="year-from-arrow" type="button">▼</button>
-                      <div class="year-dropdown" id="year-from-dropdown">
-                        <div class="year-dropdown-content"></div>
-                      </div>
-                    </div>
-                  </div>
-                  <span class="year-separator">TO</span>
-                  <div class="year-combo-wrapper">
-                    <label class="year-label">To:</label>
-                    <div class="year-combo" id="year-to-combo">
-                      <input type="number" id="year-to" class="year-combo-input" min="1900" max="2100" placeholder="Year">
-                      <button class="year-combo-arrow" id="year-to-arrow" type="button">▼</button>
-                      <div class="year-dropdown" id="year-to-dropdown">
-                        <div class="year-dropdown-content"></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Sort Options -->
-              <div class="filter-group">
-                <label class="filter-label">Sort By:</label>
-                <select id="sort-by" class="sort-select">
-                  <option value="release_date.desc" selected>Release Date (Newest First)</option>
-                  <option value="popularity.desc">Popularity (High to Low)</option>
-                  <option value="popularity.asc">Popularity (Low to High)</option>
-                  <option value="vote_average.desc">Rating (High to Low)</option>
-                  <option value="vote_average.asc">Rating (Low to High)</option>
-                  <option value="release_date.asc">Release Date (Oldest First)</option>
-                </select>
-              </div>
-
-              <!-- Min Rating Filter -->
-              <div class="filter-group">
-                <label class="filter-label">Min Rating:</label>
-                <select id="min-rating" class="sort-select">
-                  <option value="0" selected>Any Rating</option>
-                  <option value="1">⭐ 1+ Stars</option>
-                  <option value="2">⭐ 2+ Stars</option>
-                  <option value="3">⭐ 3+ Stars</option>
-                  <option value="4">⭐ 4+ Stars</option>
-                  <option value="5">⭐ 5+ Stars</option>
-                  <option value="6">⭐ 6+ Stars</option>
-                  <option value="7">⭐ 7+ Stars</option>
-                  <option value="8">⭐ 8+ Stars</option>
-                  <option value="9">⭐ 9+ Stars</option>
-                  <option value="10">⭐ 10 Stars</option>
-                </select>
-              </div>
-
-              <!-- Animation Filter -->
-              <div class="filter-group">
-                <label class="filter-label">Content Filter:</label>
-                <div class="checkbox-container">
-                  <label class="checkbox-label">
-                    <input type="checkbox" id="exclude-animation" class="checkbox-input">
-                    <span class="checkbox-custom"></span>
-                    <span class="checkbox-text">🚫 Exclude Animation & Cartoons</span>
-                  </label>
-                </div>
-              </div>
-
-              <!-- Search Button -->
-              <div class="filter-group">
-                <button class="btn btn-primary search-btn" id="search-btn">
-                  🔍 Search
-                </button>
-              </div>
+              <div class="filter-group type-filter"><label class="filter-label">Content</label><div class="toggle-group" aria-label="Content type"><button class="toggle-btn active" data-type="movie" aria-pressed="true">Movies</button><button class="toggle-btn" data-type="tv" aria-pressed="false">TV Shows</button></div></div>
+              <div class="filter-group"><label class="filter-label">Genres · match any</label><details class="filter-dropdown" id="genres-dropdown"><summary><span id="genres-summary">All genres</span></summary><div class="dropdown-panel"><p>Any selected genre can match.</p><div class="genres-container" id="genres-container"></div></div></details></div>
+              <div class="filter-group"><label class="filter-label">Original language</label><details class="filter-dropdown" id="language-dropdown"><summary><span id="language-summary">Any language</span></summary><div class="dropdown-panel"><div class="language-container" id="language-container"></div></div></details></div>
+              <div class="filter-group"><label class="filter-label">Streaming · US</label><details class="filter-dropdown" id="providers-dropdown"><summary><span id="providers-summary">Any provider</span></summary><div class="dropdown-panel"><div class="providers-container" id="providers-container"></div></div></details></div>
+              <div class="filter-group"><label class="filter-label">Release years</label><div class="year-range">
+                <div class="year-combo" id="year-from-combo"><input type="number" id="year-from" class="year-combo-input" min="1900" max="2100" placeholder="Any" aria-label="From year"><button class="year-combo-arrow" id="year-from-arrow" aria-label="Choose from year" type="button">⌄</button><div class="year-dropdown" id="year-from-dropdown"><div class="year-dropdown-content"></div></div></div>
+                <span class="year-separator">–</span><div class="year-combo" id="year-to-combo"><input type="number" id="year-to" class="year-combo-input" min="1900" max="2100" placeholder="Any" aria-label="To year"><button class="year-combo-arrow" id="year-to-arrow" aria-label="Choose to year" type="button">⌄</button><div class="year-dropdown" id="year-to-dropdown"><div class="year-dropdown-content"></div></div></div>
+              </div></div>
+              <div class="filter-group"><label class="filter-label" for="sort-by">Sort by</label><select id="sort-by" class="sort-select"><option value="popularity.desc" selected>Most popular</option><option value="release_date.desc">Newest releases</option><option value="vote_average.desc">Highest rated</option><option value="vote_average.asc">Lowest rated</option><option value="release_date.asc">Oldest releases</option></select></div>
+              <div class="filter-group"><label class="filter-label" for="min-rating">Minimum rating</label><select id="min-rating" class="sort-select"><option value="0">Any rating</option><option value="1">1+ / 10</option><option value="2">2+ / 10</option><option value="3">3+ / 10</option><option value="4">4+ / 10</option><option value="5">5+ / 10</option><option value="6">6+ / 10</option><option value="7">7+ / 10</option><option value="8">8+ / 10</option><option value="9">9+ / 10</option></select></div>
+              <div class="filter-group"><label class="filter-label">Content filter</label><label class="compact-checkbox"><input type="checkbox" id="exclude-animation"> Hide animation</label></div>
             </div>
+            <div class="filter-footer"><span id="filter-status">Movies · all genres</span><div class="inline-actions"><button class="btn btn-secondary" id="reset-filters">Reset</button><button class="btn btn-secondary" id="refresh-discover" title="Fetch fresh results from TMDB">↻ Refresh</button><button class="btn btn-primary" id="search-btn">Discover titles →</button></div></div>
           </section>
 
           <!-- Results Section -->
@@ -265,11 +191,11 @@
               <h3>Search Results</h3>
               <div class="results-info" id="results-info"></div>
             </div>
-            
+
             <div class="results-grid" id="results-grid">
               <!-- Results will be populated here -->
             </div>
-            
+
             <div class="view-more-container" id="view-more-container" style="display: none;">
               <button class="btn btn-primary view-more-btn" id="view-more-btn">
                 📺 View More Results
@@ -313,9 +239,9 @@
             <!-- Search Bar -->
             <div class="search-bar-container">
               <div class="search-input-group">
-                <input 
-                  type="text" 
-                  id="search-input" 
+                <input
+                  type="text"
+                  id="search-input"
                   placeholder="Enter movie or TV show name..."
                   class="search-input"
                 />
@@ -369,7 +295,7 @@
               <h2>My Watched List</h2>
               <div class="watched-stats" id="watched-stats"></div>
             </div>
-            
+
             <div class="watched-filters">
               <div class="filter-group">
                 <label class="filter-label">Filter by Type:</label>
@@ -380,11 +306,11 @@
                 </div>
               </div>
             </div>
-            
+
             <div class="watched-grid" id="watched-grid">
               <!-- Watched items will be populated here -->
             </div>
-            
+
             <!-- Empty Watched State -->
             <div class="empty-watched" id="empty-watched" style="display: none;">
               <div class="empty-icon">📺</div>
@@ -401,10 +327,11 @@
         <div class="page-content" id="white-list-page" style="display: none;">
           <section class="white-list-section">
             <div class="white-list-header">
-              <h2>My White List</h2>
+              <h2>My Waitlist</h2>
               <div class="white-list-stats" id="white-list-stats"></div>
             </div>
 
+            <details class="review-section" id="proposal-review"><summary>Review AI matches <span class="count-pill" id="proposal-count">0</span><span class="review-hint">Only approved titles join your waitlist</span></summary><div id="proposal-list" class="proposal-list"></div></details>
             <div class="white-list-filters">
               <button class="nav-btn active" onclick="switchWhiteListFilter('all')">All</button>
               <button class="nav-btn" onclick="switchWhiteListFilter('movie')">Movies</button>
@@ -418,12 +345,26 @@
             <!-- Empty White List State -->
             <div class="empty-white-list" id="empty-white-list" style="display: none;">
               <div class="empty-icon">⭐</div>
-              <h3>No white listed content yet!</h3>
-              <p>Start marking movies and TV shows as white listed to build your personal collection.</p>
+              <h3>Your waitlist is empty</h3>
+              <p>Save titles for later, or approve matches proposed by your AI agent.</p>
             </div>
+          </section>
+        </div>
+        <div class="page-content" id="research-page" style="display:none">
+          <section class="ai-page">
+            <div class="ai-heading"><span class="eyebrow">FROM A LIST TO A MOVIE NIGHT</span><h2>Reel Research <span>✦</span></h2><p>Paste your titles. Let your connected AI find the right matches. You make the final call.</p></div>
+            <div class="ai-layout"><div class="research-editor panel"><label for="research-text">Your movies & shows</label><p class="help-text">Text, tables, CSV or copied spreadsheet cells. Include years when you can.</p><textarea id="research-text" maxlength="200000" placeholder="Title                 Year    Type&#10;Arrival               2016    Movie&#10;Severance             2022    TV&#10;&#10;Or paste an entire table here…"></textarea><div class="editor-meta"><span id="research-length">0 characters</span><span id="research-save-state">Not saved yet</span></div><label for="research-instructions">What should your agent do?</label><textarea id="research-instructions" maxlength="10000" rows="2" placeholder="Find each exact title and propose it for my waitlist. Flag uncertain matches."></textarea><div class="inline-actions"><button class="btn btn-primary" id="save-research">Save research</button><button class="btn btn-secondary" id="copy-research-prompt">Copy agent prompt</button></div></div>
+            <aside class="research-aside"><div class="panel workflow-panel"><h3>A little help. Your final say.</h3><ol><li><strong>Save your list</strong><span>The original text stays in this app.</span></li><li><strong>Connect your agent</strong><span>Start MCP in Settings, then configure your AI client.</span></li><li><strong>Ask it to research</strong><span>Copy the prompt and give it to your connected agent.</span></li><li><strong>Review the matches</strong><span>Approve titles in Waitlist. Nothing is added automatically.</span></li></ol><button class="btn btn-secondary" id="research-open-mcp">Open MCP settings</button></div><div class="panel"><h3>Agent progress</h3><p id="research-agent-note" class="agent-note">Your agent's progress and unmatched titles will appear here.</p><button class="text-button" id="research-review">Review pending matches →</button></div></aside></div>
+          </section>
+        </div>
+        <div class="page-content" id="picks-page" style="display:none">
+          <section class="ai-page"><div class="ai-heading"><span class="eyebrow">A PERSONAL SHORTLIST</span><h2>AI Picks <span>✧</span></h2><p>A forgotten favorite or something new. Recommendations from your own library.</p></div>
+            <div class="panel picks-brief"><div class="brief-heading"><h3>Set the mood</h3><p>Copy this brief to your connected agent. Its picks will appear below.</p></div><div class="brief-fields"><label>Tonight I want<select id="pick-source"><option value="waitlist">Something new from my waitlist</option><option value="watched">A rewatch, oldest watched first</option></select></label><label>Format<select id="pick-format"><option>Movies or TV shows</option><option>Movies</option><option>TV shows</option></select></label><label>Mood / genres<input id="pick-mood" placeholder="Thoughtful sci-fi, no horror"></label><label>Time available<input id="pick-time" placeholder="About two hours"></label><label>Language<input id="pick-language" placeholder="Any language"></label><label>Number of picks<select id="pick-count"><option>5</option><option>10</option></select></label></div><div class="inline-actions"><button class="btn btn-primary" id="copy-picks-prompt">Copy recommendation brief</button><button class="btn btn-secondary" id="refresh-ai">↻ Refresh picks</button></div></div>
+            <div id="suggestion-list" class="suggestion-grid"></div><div class="ai-empty panel" id="picks-empty"><span>✧</span><h3>Your next movie night starts here</h3><p>Connect your agent through MCP and ask it to publish recommendations. Rewatch picks use your watched dates; new picks come from your approved waitlist.</p><button class="btn btn-secondary" id="picks-open-mcp">Connect an agent</button></div>
           </section>
         </div>
       </main>
     </div>
+    <div id="toast-stack" class="toast-stack" aria-live="polite" aria-atomic="false"></div>
   </body>
 </html>

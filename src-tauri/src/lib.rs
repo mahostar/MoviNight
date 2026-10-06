@@ -1,8 +1,13 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Mutex};
 use tauri::State;
+mod ai;
+mod api;
+mod mcp;
+mod storage;
+use ai::*;
+use api::*;
+use mcp::*;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ApiResponse<T> {
@@ -19,6 +24,7 @@ struct Movie {
     overview: String,
     poster_path: Option<String>,
     backdrop_path: Option<String>,
+    #[serde(default)]
     release_date: String,
     vote_average: f64,
     vote_count: u32,
@@ -33,6 +39,7 @@ struct TvShow {
     overview: String,
     poster_path: Option<String>,
     backdrop_path: Option<String>,
+    #[serde(default)]
     first_air_date: String,
     vote_average: f64,
     vote_count: u32,
@@ -77,10 +84,20 @@ struct WatchedItem {
     title: String,
     overview: String,
     poster_path: Option<String>,
+    #[serde(default)]
     release_date: String, // For movies it's release_date, for TV shows it's first_air_date
     vote_average: f64,
     content_type: String, // "movie" or "tv"
+    #[serde(flatten)]
+    extra: std::collections::HashMap<String, serde_json::Value>,
     watched_date: String, // ISO date when marked as watched
+    // Season tracking fields (Option for backward compatibility with existing data)
+    #[serde(default)]
+    watched_seasons: Option<Vec<u32>>, // Season numbers the user has checked off
+    #[serde(default)]
+    total_seasons_known: Option<u32>, // Total seasons known at last check
+    #[serde(default)]
+    has_new_seasons: Option<bool>, // Flag: are there unwatched new seasons?
 }
 
 // White list item structure
@@ -90,9 +107,12 @@ struct WhiteListItem {
     title: String,
     overview: String,
     poster_path: Option<String>,
+    #[serde(default)]
     release_date: String, // For movies it's release_date, for TV shows it's first_air_date
     vote_average: f64,
     content_type: String, // "movie" or "tv"
+    #[serde(flatten)]
+    extra: std::collections::HashMap<String, serde_json::Value>,
     white_list_date: String, // ISO date when marked as white listed
 }
 
@@ -122,6 +142,7 @@ struct MovieDetails {
     overview: String,
     poster_path: Option<String>,
     backdrop_path: Option<String>,
+    #[serde(default)]
     release_date: String,
     vote_average: f64,
     vote_count: u32,
@@ -137,6 +158,7 @@ struct TvDetails {
     overview: String,
     poster_path: Option<String>,
     backdrop_path: Option<String>,
+    #[serde(default)]
     first_air_date: String,
     vote_average: f64,
     vote_count: u32,
@@ -146,101 +168,148 @@ struct TvDetails {
     tagline: Option<String>,
 }
 
-// Application state for storing API key and watched items
-struct AppState {
-    api_key: std::sync::Mutex<Option<String>>,
-    watched_items: std::sync::Mutex<Vec<WatchedItem>>,
-    white_list_items: std::sync::Mutex<Vec<WhiteListItem>>,
+// Season info from TMDB TV details response
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct SeasonInfo {
+    season_number: u32,
+    name: String,
+    episode_count: u32,
+    air_date: Option<String>,
+    overview: Option<String>,
+    poster_path: Option<String>,
 }
 
-// Error handling as recommended in the documentation
+// Full TV details response including seasons array
+#[derive(Debug, Serialize, Deserialize)]
+struct TvDetailsFull {
+    id: u32,
+    name: String,
+    number_of_seasons: u32,
+    number_of_episodes: u32,
+    seasons: Vec<SeasonInfo>,
+}
+
+// Response from get_tv_season_details command
+#[derive(Debug, Serialize, Deserialize)]
+struct TvSeasonDetailsResponse {
+    id: u32,
+    name: String,
+    number_of_seasons: u32,
+    seasons: Vec<SeasonInfo>,  // All seasons (excluding season 0/specials)
+    watched_seasons: Vec<u32>, // Currently checked-off seasons
+    total_seasons_known: u32,  // Total seasons known from last check
+}
+
+// Response item for new season check
+#[derive(Debug, Serialize, Deserialize)]
+struct NewSeasonAlert {
+    id: u32,
+    title: String,
+    new_season_count: u32, // How many new seasons detected
+    total_seasons: u32,    // Current total seasons on TMDB
+}
+
+struct AppState {
+    api_key: Mutex<Option<String>>,
+    data_lock: Mutex<()>,
+    http: api::TmdbClient,
+    mcp: Mutex<mcp::ServerControl>,
+}
+
 #[derive(Debug, thiserror::Error)]
 enum ApiError {
-    #[error("No API key found. Please set your TMDB API key in settings.")]
+    #[error("No API key found. Set your TMDB API key in Settings.")]
     NoApiKey,
-    #[error("HTTP request failed: {0}")]
-    RequestFailed(#[from] reqwest::Error),
-    #[error("Failed to parse response: {0}")]
+    #[error("{0}")]
+    Invalid(String),
+    #[error("TMDB request failed: {0}")]
+    RequestFailed(reqwest::Error),
+    #[error("Saved data could not be read: {0}. The original file has been preserved.")]
     ParseError(#[from] serde_json::Error),
     #[error("File system error: {0}")]
     FileError(#[from] std::io::Error),
 }
-
+impl From<reqwest::Error> for ApiError {
+    fn from(error: reqwest::Error) -> Self {
+        Self::RequestFailed(error.without_url())
+    }
+}
 impl serde::Serialize for ApiError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        serializer.serialize_str(self.to_string().as_ref())
+    fn serialize<S: serde::ser::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
     }
 }
-
 fn get_config_dir() -> Result<PathBuf, ApiError> {
-    let config_dir = dirs::config_dir()
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Config directory not found"))?
-        .join("movinight");
-    
-    if !config_dir.exists() {
-        fs::create_dir_all(&config_dir)?;
+    // Debug-only isolation for runtime QA; release builds always use the established location.
+    #[cfg(debug_assertions)]
+    if let Some(test_dir) = std::env::var_os("MOVINIGHT_QA_DATA_DIR") {
+        let dir = PathBuf::from(test_dir);
+        std::fs::create_dir_all(&dir)?;
+        return Ok(dir);
     }
-    
-    Ok(config_dir)
+
+    // Debug-only isolation for runtime QA; release builds always use the established location.
+    #[cfg(debug_assertions)]
+    if let Some(test_dir) = std::env::var_os("MOVINIGHT_QA_DATA_DIR") {
+        let dir = PathBuf::from(test_dir);
+        std::fs::create_dir_all(&dir)?;
+        return Ok(dir);
+    }
+
+    let dir = dirs::config_dir()
+        .ok_or_else(|| ApiError::Invalid("Config directory unavailable".into()))?
+        .join("movinight");
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
 }
-
-// Commands following Tauri v2 documentation patterns
-
-#[tauri::command]
-async fn save_api_key(api_key: String, state: State<'_, AppState>) -> Result<(), ApiError> {
-    // Save to state
-    let mut stored_key = state.api_key.lock().unwrap();
-    *stored_key = Some(api_key.clone());
-    
-    // Save to file for persistence
-    let config_dir = get_config_dir()?;
-    let config_file = config_dir.join("config.json");
-    
-    let config = serde_json::json!({
-        "api_key": api_key
-    });
-    
-    fs::write(config_file, serde_json::to_string_pretty(&config)?)?;
-    
+fn validate_type(value: &str) -> Result<(), ApiError> {
+    if value != "movie" && value != "tv" {
+        return Err(ApiError::Invalid("Content type must be movie or tv".into()));
+    }
     Ok(())
 }
-
 #[tauri::command]
-async fn load_api_key(state: State<'_, AppState>) -> Result<Option<String>, ApiError> {
-    // First check in-memory state
-    {
-        let stored_key = state.api_key.lock().unwrap();
-        if stored_key.is_some() {
-            return Ok(stored_key.clone());
-        }
+async fn save_api_key(
+    api_key: String,
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<(), ApiError> {
+    if api_key.trim().is_empty() {
+        return Err(ApiError::NoApiKey);
     }
-    
-    // Load from file
-    let config_dir = get_config_dir()?;
-    let config_file = config_dir.join("config.json");
-    
-    if config_file.exists() {
-        let content = fs::read_to_string(config_file)?;
-        let config: serde_json::Value = serde_json::from_str(&content)?;
-        
-        if let Some(api_key) = config.get("api_key").and_then(|k| k.as_str()) {
-            let api_key = api_key.to_string();
-            
-            // Update in-memory state
-            let mut stored_key = state.api_key.lock().unwrap();
-            *stored_key = Some(api_key.clone());
-            
-            return Ok(Some(api_key));
-        }
-    }
-    
-    Ok(None)
+    let _guard = state.data_lock.lock().unwrap();
+    let dir = get_config_dir()?;
+    let mut config: serde_json::Value =
+        storage::read(&dir, "config.json")?.unwrap_or(serde_json::json!({}));
+    config["api_key"] = serde_json::json!(api_key.trim());
+    storage::write(&dir, "config.json", &config)?;
+    *state.api_key.lock().unwrap() = Some(api_key.trim().into());
+    state.http.clear();
+    Ok(())
 }
-
-// Watched items management commands
+#[tauri::command]
+async fn load_api_key(
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<Option<String>, ApiError> {
+    let _guard = state.data_lock.lock().unwrap();
+    let config: Option<serde_json::Value> = storage::read(&get_config_dir()?, "config.json")?;
+    let key = config.and_then(|v| v["api_key"].as_str().map(str::to_owned));
+    *state.api_key.lock().unwrap() = key.clone();
+    Ok(key)
+}
+#[tauri::command]
+async fn get_watched_items(
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<Vec<WatchedItem>, ApiError> {
+    let _guard = state.data_lock.lock().unwrap();
+    Ok(storage::read(&get_config_dir()?, "watched.json")?.unwrap_or_default())
+}
+#[tauri::command]
+async fn get_white_list_items(
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<Vec<WhiteListItem>, ApiError> {
+    let _guard = state.data_lock.lock().unwrap();
+    Ok(storage::read(&get_config_dir()?, "white_list.json")?.unwrap_or_default())
+}
 #[tauri::command]
 async fn add_watched_item(
     id: u32,
@@ -250,105 +319,35 @@ async fn add_watched_item(
     release_date: String,
     vote_average: f64,
     content_type: String,
-    state: State<'_, AppState>,
+    state: State<'_, std::sync::Arc<AppState>>,
 ) -> Result<(), ApiError> {
-    let watched_item = WatchedItem {
+    validate_type(&content_type)?;
+    let _guard = state.data_lock.lock().unwrap();
+    let dir = get_config_dir()?;
+    let mut items: Vec<WatchedItem> = storage::read(&dir, "watched.json")?.unwrap_or_default();
+    // Idempotent additions preserve the original watched date and season history.
+    if items
+        .iter()
+        .any(|i| i.id == id && i.content_type == content_type)
+    {
+        return Ok(());
+    }
+    items.push(WatchedItem {
+        extra: Default::default(),
         id,
         title,
         overview,
         poster_path,
         release_date,
         vote_average,
-        content_type: content_type.clone(),
+        content_type,
         watched_date: chrono::Utc::now().format("%Y-%m-%d").to_string(),
-    };
-
-    // Add to in-memory state
-    {
-        let mut watched_items = state.watched_items.lock().unwrap();
-        // Remove if already exists (to avoid duplicates)
-        watched_items.retain(|item| !(item.id == id && item.content_type == content_type));
-        watched_items.push(watched_item.clone());
-    }
-
-    // Save to file
-    let config_dir = get_config_dir()?;
-    let watched_file = config_dir.join("watched.json");
-    
-    let watched_items = state.watched_items.lock().unwrap();
-    fs::write(watched_file, serde_json::to_string_pretty(&*watched_items)?)?;
-    
-    Ok(())
+        watched_seasons: None,
+        total_seasons_known: None,
+        has_new_seasons: None,
+    });
+    storage::write(&dir, "watched.json", &items)
 }
-
-#[tauri::command]
-async fn remove_watched_item(
-    id: u32,
-    content_type: String,
-    state: State<'_, AppState>,
-) -> Result<(), ApiError> {
-    // Remove from in-memory state
-    {
-        let mut watched_items = state.watched_items.lock().unwrap();
-        watched_items.retain(|item| !(item.id == id && item.content_type == content_type));
-    }
-
-    // Save to file
-    let config_dir = get_config_dir()?;
-    let watched_file = config_dir.join("watched.json");
-    
-    let watched_items = state.watched_items.lock().unwrap();
-    fs::write(watched_file, serde_json::to_string_pretty(&*watched_items)?)?;
-    
-    Ok(())
-}
-
-#[tauri::command]
-async fn get_watched_items(state: State<'_, AppState>) -> Result<Vec<WatchedItem>, ApiError> {
-    // First check in-memory state
-    {
-        let watched_items = state.watched_items.lock().unwrap();
-        if !watched_items.is_empty() {
-            return Ok(watched_items.clone());
-        }
-    }
-    
-    // Load from file
-    let config_dir = get_config_dir()?;
-    let watched_file = config_dir.join("watched.json");
-    
-    if watched_file.exists() {
-        let content = fs::read_to_string(watched_file)?;
-        let watched_items: Vec<WatchedItem> = serde_json::from_str(&content)?;
-        
-        // Update in-memory state
-        {
-            let mut stored_items = state.watched_items.lock().unwrap();
-            *stored_items = watched_items.clone();
-        }
-        
-        Ok(watched_items)
-    } else {
-        Ok(vec![])
-    }
-}
-
-#[tauri::command]
-async fn is_watched(
-    id: u32,
-    content_type: String,
-    state: State<'_, AppState>,
-) -> Result<bool, ApiError> {
-    // First ensure we have loaded watched items
-    let _ = get_watched_items(state.clone()).await?;
-
-    let watched_items = state.watched_items.lock().unwrap();
-    let is_watched = watched_items.iter().any(|item| item.id == id && item.content_type == content_type);
-
-    Ok(is_watched)
-}
-
-// White list items management commands
 #[tauri::command]
 async fn add_white_list_item(
     id: u32,
@@ -358,440 +357,191 @@ async fn add_white_list_item(
     release_date: String,
     vote_average: f64,
     content_type: String,
-    state: State<'_, AppState>,
+    state: State<'_, std::sync::Arc<AppState>>,
 ) -> Result<(), ApiError> {
-    let white_list_item = WhiteListItem {
+    validate_type(&content_type)?;
+    let _guard = state.data_lock.lock().unwrap();
+    let dir = get_config_dir()?;
+    let mut items: Vec<WhiteListItem> = storage::read(&dir, "white_list.json")?.unwrap_or_default();
+    if items
+        .iter()
+        .any(|i| i.id == id && i.content_type == content_type)
+    {
+        return Ok(());
+    }
+    items.push(WhiteListItem {
+        extra: Default::default(),
         id,
         title,
         overview,
         poster_path,
         release_date,
         vote_average,
-        content_type: content_type.clone(),
+        content_type,
         white_list_date: chrono::Utc::now().format("%Y-%m-%d").to_string(),
-    };
-
-    // Add to in-memory state
-    {
-        let mut white_list_items = state.white_list_items.lock().unwrap();
-        // Remove if already exists (to avoid duplicates)
-        white_list_items.retain(|item| !(item.id == id && item.content_type == content_type));
-        white_list_items.push(white_list_item.clone());
-    }
-
-    // Save to file
-    let config_dir = get_config_dir()?;
-    let white_list_file = config_dir.join("white_list.json");
-    
-    let white_list_items = state.white_list_items.lock().unwrap();
-    fs::write(white_list_file, serde_json::to_string_pretty(&*white_list_items)?)?;
-
-    Ok(())
+    });
+    storage::write(&dir, "white_list.json", &items)
 }
-
+#[tauri::command]
+async fn remove_watched_item(
+    id: u32,
+    content_type: String,
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<(), ApiError> {
+    let _guard = state.data_lock.lock().unwrap();
+    let dir = get_config_dir()?;
+    let mut items: Vec<WatchedItem> = storage::read(&dir, "watched.json")?.unwrap_or_default();
+    items.retain(|i| !(i.id == id && i.content_type == content_type));
+    storage::write(&dir, "watched.json", &items)
+}
 #[tauri::command]
 async fn remove_white_list_item(
     id: u32,
     content_type: String,
-    state: State<'_, AppState>,
+    state: State<'_, std::sync::Arc<AppState>>,
 ) -> Result<(), ApiError> {
-    // Remove from in-memory state
-    {
-        let mut white_list_items = state.white_list_items.lock().unwrap();
-        white_list_items.retain(|item| !(item.id == id && item.content_type == content_type));
-    }
-
-    // Save to file
-    let config_dir = get_config_dir()?;
-    let white_list_file = config_dir.join("white_list.json");
-    
-    let white_list_items = state.white_list_items.lock().unwrap();
-    fs::write(white_list_file, serde_json::to_string_pretty(&*white_list_items)?)?;
-
-    Ok(())
+    let _guard = state.data_lock.lock().unwrap();
+    let dir = get_config_dir()?;
+    let mut items: Vec<WhiteListItem> = storage::read(&dir, "white_list.json")?.unwrap_or_default();
+    items.retain(|i| !(i.id == id && i.content_type == content_type));
+    storage::write(&dir, "white_list.json", &items)
 }
-
 #[tauri::command]
-async fn get_white_list_items(state: State<'_, AppState>) -> Result<Vec<WhiteListItem>, ApiError> {
-    // First check in-memory state
-    {
-        let white_list_items = state.white_list_items.lock().unwrap();
-        if !white_list_items.is_empty() {
-            return Ok(white_list_items.clone());
-        }
-    }
-    
-    // Load from file
-    let config_dir = get_config_dir()?;
-    let white_list_file = config_dir.join("white_list.json");
-
-    if white_list_file.exists() {
-        let content = fs::read_to_string(white_list_file)?;
-        let white_list_items: Vec<WhiteListItem> = serde_json::from_str(&content)?;
-
-        // Update in-memory state
-        {
-            let mut stored_items = state.white_list_items.lock().unwrap();
-            *stored_items = white_list_items.clone();
-        }
-
-        Ok(white_list_items)
-    } else {
-        Ok(Vec::new())
-    }
+async fn is_watched(
+    id: u32,
+    content_type: String,
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<bool, ApiError> {
+    Ok(get_watched_items(state)
+        .await?
+        .iter()
+        .any(|i| i.id == id && i.content_type == content_type))
 }
-
 #[tauri::command]
 async fn is_white_listed(
     id: u32,
     content_type: String,
-    state: State<'_, AppState>,
+    state: State<'_, std::sync::Arc<AppState>>,
 ) -> Result<bool, ApiError> {
-    // First ensure we have loaded white list items
-    let _ = get_white_list_items(state.clone()).await?;
-
-    let white_list_items = state.white_list_items.lock().unwrap();
-    let is_white_listed = white_list_items.iter().any(|item| item.id == id && item.content_type == content_type);
-
-    Ok(is_white_listed)
+    Ok(get_white_list_items(state)
+        .await?
+        .iter()
+        .any(|i| i.id == id && i.content_type == content_type))
 }
-
 #[tauri::command]
-async fn get_movie_genres(state: State<'_, AppState>) -> Result<Vec<Genre>, ApiError> {
-    let api_key = {
-        let stored_key = state.api_key.lock().unwrap();
-        stored_key.clone().ok_or(ApiError::NoApiKey)?
-    };
-
-    let url = format!(
-        "https://api.themoviedb.org/3/genre/movie/list?api_key={}&language=en-US",
-        api_key
-    );
-
-    let response = reqwest::get(&url).await?;
-    let genre_response: GenreResponse = response.json().await?;
-
-    Ok(genre_response.genres)
+async fn get_tv_season_details(
+    id: u32,
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<TvSeasonDetailsResponse, ApiError> {
+    let details: TvDetailsFull = state
+        .http
+        .get(&state, &format!("tv/{id}"), &[], false)
+        .await?;
+    let items = get_watched_items(state).await?;
+    let item = items.iter().find(|i| i.id == id && i.content_type == "tv");
+    Ok(TvSeasonDetailsResponse {
+        id: details.id,
+        name: details.name,
+        number_of_seasons: details.number_of_seasons,
+        seasons: details
+            .seasons
+            .into_iter()
+            .filter(|s| s.season_number > 0)
+            .collect(),
+        watched_seasons: item
+            .and_then(|i| i.watched_seasons.clone())
+            .unwrap_or_default(),
+        total_seasons_known: item.and_then(|i| i.total_seasons_known).unwrap_or(0),
+    })
 }
-
 #[tauri::command]
-async fn get_tv_genres(state: State<'_, AppState>) -> Result<Vec<Genre>, ApiError> {
-    let api_key = {
-        let stored_key = state.api_key.lock().unwrap();
-        stored_key.clone().ok_or(ApiError::NoApiKey)?
-    };
-    
-    let url = format!(
-        "https://api.themoviedb.org/3/genre/tv/list?api_key={}&language=en-US",
-        api_key
-    );
-    
-    let response = reqwest::get(&url).await?;
-    let genre_response: GenreResponse = response.json().await?;
-
-    Ok(genre_response.genres)
+async fn update_watched_seasons(
+    id: u32,
+    watched_seasons: Vec<u32>,
+    total_seasons_known: u32,
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<(), ApiError> {
+    let _guard = state.data_lock.lock().unwrap();
+    let dir = get_config_dir()?;
+    let mut items: Vec<WatchedItem> = storage::read(&dir, "watched.json")?.unwrap_or_default();
+    let item = items
+        .iter_mut()
+        .find(|i| i.id == id && i.content_type == "tv")
+        .ok_or_else(|| ApiError::Invalid("Show is no longer in your watched list".into()))?;
+    item.has_new_seasons = Some((1..=total_seasons_known).any(|s| !watched_seasons.contains(&s)));
+    item.watched_seasons = Some(watched_seasons);
+    item.total_seasons_known = Some(total_seasons_known);
+    storage::write(&dir, "watched.json", &items)
 }
-
 #[tauri::command]
-async fn get_languages(state: State<'_, AppState>) -> Result<Vec<Language>, ApiError> {
-    let api_key = {
-        let stored_key = state.api_key.lock().unwrap();
-        stored_key.clone().ok_or(ApiError::NoApiKey)?
-    };
-    
-    let url = format!(
-        "https://api.themoviedb.org/3/configuration/languages?api_key={}",
-        api_key
-    );
-    
-    let response = reqwest::get(&url).await?;
-    let languages: Vec<Language> = response.json().await?;
-    
-    Ok(languages)
-}
-
-#[tauri::command]
-async fn get_watch_providers(content_type: String, state: State<'_, AppState>) -> Result<Vec<WatchProvider>, ApiError> {
-    let api_key = {
-        let stored_key = state.api_key.lock().unwrap();
-        stored_key.clone().ok_or(ApiError::NoApiKey)?
-    };
-
-    let path = if content_type == "movie" { "movie" } else { "tv" };
-    
-    let url = format!(
-        "https://api.themoviedb.org/3/watch/providers/{}?api_key={}&language=en-US&watch_region=US",
-        path, api_key
-    );
-    
-    let response = reqwest::get(&url).await?;
-    let provider_response: WatchProviderResponse = response.json().await?;
-    
-    Ok(provider_response.results)
-}
-
-#[tauri::command]
-async fn search_movies(
-    query: String,
-    page: u32,
-    year_from: Option<u32>,
-    year_to: Option<u32>,
-    genre_ids: Vec<u32>,
-    sort_by: String,
-    exclude_animation: bool,
-    with_watch_providers: Vec<u32>,
-    with_original_language: Option<String>,
-    min_rating: Option<f64>,
-    state: State<'_, AppState>,
-) -> Result<ApiResponse<Movie>, ApiError> {
-    let api_key = {
-        let stored_key = state.api_key.lock().unwrap();
-        stored_key.clone().ok_or(ApiError::NoApiKey)?
-    };
-    
-    let mut url = if query.is_empty() {
-        // Discover movies
-            format!(
-            "https://api.themoviedb.org/3/discover/movie?api_key={}&language=en-US&page={}&sort_by={}",
-            api_key, page, sort_by
-            )
-        } else {
-        // Search movies
-            format!(
-            "https://api.themoviedb.org/3/search/movie?api_key={}&language=en-US&query={}&page={}",
-            api_key, urlencoding::encode(&query), page
-        )
-    };
-    
-    // year_from is the START year (left side), year_to is the END year (right side)
-    // For TMDB API: gte = greater than or equal (start date), lte = less than or equal (end date)
-    if let Some(year) = year_from {
-        url.push_str(&format!("&primary_release_date.gte={}-01-01", year));
-    }
-    if let Some(year) = year_to {
-        url.push_str(&format!("&primary_release_date.lte={}-12-31", year));
-    }
-    
-    if !genre_ids.is_empty() {
-        let genres = genre_ids.iter()
-            .map(|id| id.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        url.push_str(&format!("&with_genres={}", genres));
-    }
-    
-    // Exclude animation genre (ID 16) if requested
-    if exclude_animation {
-        url.push_str("&without_genres=16");
-    }
-
-    if !with_watch_providers.is_empty() {
-        let providers = with_watch_providers.iter()
-            .map(|id| id.to_string())
-            .collect::<Vec<_>>()
-            .join("|"); // OR logic
-        url.push_str(&format!("&with_watch_providers={}&watch_region=US", providers));
-    }
-
-    if let Some(lang) = with_original_language {
-        if !lang.is_empty() {
-            url.push_str(&format!("&with_original_language={}", lang));
+async fn check_all_new_seasons(
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<Vec<NewSeasonAlert>, ApiError> {
+    let shows = get_watched_items(state.clone()).await?;
+    let mut updates = Vec::new();
+    for item in shows.iter().filter(|i| i.content_type == "tv") {
+        if let Ok(details) = state
+            .http
+            .get::<TvDetailsFull>(&state, &format!("tv/{}", item.id), &[], false)
+            .await
+        {
+            // Only aired seasons are alerts; legacy entries with no season tracking get a baseline.
+            let aired: Vec<u32> = details
+                .seasons
+                .iter()
+                .filter(|s| {
+                    s.season_number > 0
+                        && s.air_date.as_deref().is_some_and(|d| {
+                            d <= chrono::Utc::now().format("%Y-%m-%d").to_string().as_str()
+                        })
+                })
+                .map(|s| s.season_number)
+                .collect();
+            updates.push((item.id, details.number_of_seasons, aired));
         }
     }
-
-    // Add minimum rating filter (vote_average.gte)
-    if let Some(rating) = min_rating {
-        if rating > 0.0 {
-            url.push_str(&format!("&vote_average.gte={}", rating));
+    let _guard = state.data_lock.lock().unwrap();
+    let dir = get_config_dir()?;
+    let mut items: Vec<WatchedItem> = storage::read(&dir, "watched.json")?.unwrap_or_default();
+    let mut alerts = Vec::new();
+    for (id, total, aired) in updates {
+        if let Some(item) = items
+            .iter_mut()
+            .find(|i| i.id == id && i.content_type == "tv")
+        {
+            let seen = item.watched_seasons.get_or_insert_with(|| aired.clone());
+            let count = aired.iter().filter(|s| !seen.contains(s)).count() as u32;
+            item.total_seasons_known = Some(total);
+            item.has_new_seasons = Some(count > 0);
+            if count > 0 {
+                alerts.push(NewSeasonAlert {
+                    id,
+                    title: item.title.clone(),
+                    new_season_count: count,
+                    total_seasons: total,
+                });
+            }
         }
     }
-    
-    let response = reqwest::get(&url).await?;
-    let api_response: ApiResponse<Movie> = response.json().await?;
-    
-    Ok(api_response)
+    if !items.is_empty() {
+        storage::write(&dir, "watched.json", &items)?;
+    }
+    Ok(alerts)
 }
-
 #[tauri::command]
-async fn search_tv_shows(
-    query: String,
-    page: u32,
-    year_from: Option<u32>,
-    year_to: Option<u32>,
-    genre_ids: Vec<u32>,
-    sort_by: String,
-    exclude_animation: bool,
-    with_watch_providers: Vec<u32>,
-    with_original_language: Option<String>,
-    min_rating: Option<f64>,
-    state: State<'_, AppState>,
-) -> Result<ApiResponse<TvShow>, ApiError> {
-    let api_key = {
-        let stored_key = state.api_key.lock().unwrap();
-        stored_key.clone().ok_or(ApiError::NoApiKey)?
-    };
-    
-    let mut url = if query.is_empty() {
-        // Discover TV shows
-        format!(
-            "https://api.themoviedb.org/3/discover/tv?api_key={}&language=en-US&page={}&sort_by={}",
-            api_key, page, sort_by
-        )
-    } else {
-        // Search TV shows
-        format!(
-            "https://api.themoviedb.org/3/search/tv?api_key={}&language=en-US&query={}&page={}",
-            api_key, urlencoding::encode(&query), page
-        )
-    };
-
-    // year_from is the START year (left side), year_to is the END year (right side)
-    // For TMDB API: gte = greater than or equal (start date), lte = less than or equal (end date)
-    if let Some(year) = year_from {
-        url.push_str(&format!("&air_date.gte={}-01-01", year));
-    }
-    if let Some(year) = year_to {
-        url.push_str(&format!("&air_date.lte={}-12-31", year));
-    }
-    
-    if !genre_ids.is_empty() {
-        let genres = genre_ids.iter()
-            .map(|id| id.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        url.push_str(&format!("&with_genres={}", genres));
-    }
-
-    // Exclude animation genre (ID 16) for TV shows if requested
-    if exclude_animation {
-        url.push_str("&without_genres=16");
-    }
-
-    if !with_watch_providers.is_empty() {
-        let providers = with_watch_providers.iter()
-            .map(|id| id.to_string())
-            .collect::<Vec<_>>()
-            .join("|"); // OR logic
-        url.push_str(&format!("&with_watch_providers={}&watch_region=US", providers));
-    }
-
-    if let Some(lang) = with_original_language {
-        if !lang.is_empty() {
-            url.push_str(&format!("&with_original_language={}", lang));
-        }
-    }
-
-    // Add minimum rating filter (vote_average.gte)
-    if let Some(rating) = min_rating {
-        if rating > 0.0 {
-            url.push_str(&format!("&vote_average.gte={}", rating));
-        }
-    }
-    
-    let response = reqwest::get(&url).await?;
-    let api_response: ApiResponse<TvShow> = response.json().await?;
-
-    Ok(api_response)
+fn disable_always_on_top(window: tauri::Window) -> Result<(), String> {
+    window.set_always_on_top(false).map_err(|e| e.to_string())
 }
-
-// Get movie details with trailers
-#[tauri::command]
-async fn get_movie_details(id: u32, state: State<'_, AppState>) -> Result<MovieDetails, ApiError> {
-    let api_key = {
-        let stored_key = state.api_key.lock().unwrap();
-        stored_key.clone().ok_or(ApiError::NoApiKey)?
-    };
-
-    let client = reqwest::Client::new();
-    let url = format!(
-        "https://api.themoviedb.org/3/movie/{}?api_key={}&language=en-US",
-        id, api_key
-    );
-
-    let response = client.get(&url).send().await?;
-    let movie_details: MovieDetails = response.json().await?;
-
-    Ok(movie_details)
-}
-
-// Get TV show details with trailers
-#[tauri::command]
-async fn get_tv_details(id: u32, state: State<'_, AppState>) -> Result<TvDetails, ApiError> {
-    let api_key = {
-        let stored_key = state.api_key.lock().unwrap();
-        stored_key.clone().ok_or(ApiError::NoApiKey)?
-    };
-
-    let client = reqwest::Client::new();
-    let url = format!(
-        "https://api.themoviedb.org/3/tv/{}?api_key={}&language=en-US",
-        id, api_key
-    );
-
-    let response = client.get(&url).send().await?;
-    let tv_details: TvDetails = response.json().await?;
-
-    Ok(tv_details)
-}
-
-// Get trailers for a movie or TV show
-#[tauri::command]
-async fn get_trailers(id: u32, content_type: String, state: State<'_, AppState>) -> Result<Vec<Trailer>, ApiError> {
-    let api_key = {
-        let stored_key = state.api_key.lock().unwrap();
-        stored_key.clone().ok_or(ApiError::NoApiKey)?
-    };
-
-    let client = reqwest::Client::new();
-    let endpoint = if content_type == "movie" { "movie" } else { "tv" };
-    let url = format!(
-        "https://api.themoviedb.org/3/{}/{}/videos?api_key={}&language=en-US",
-        endpoint, id, api_key
-    );
-
-    let response = client.get(&url).send().await?;
-    let trailer_response: TrailerResponse = response.json().await?;
-
-    // Filter for YouTube trailers only and prioritize official trailers
-    let mut trailers: Vec<Trailer> = trailer_response.results
-        .into_iter()
-        .filter(|t| t.site == "YouTube" && (t.trailer_type == "Trailer" || t.trailer_type == "Teaser"))
-        .collect();
-
-    // Sort by official status (official first) and then by published date (newest first)
-    trailers.sort_by(|a, b| {
-        match b.official.cmp(&a.official) {
-            std::cmp::Ordering::Equal => b.published_at.cmp(&a.published_at),
-            other => other,
-        }
-    });
-
-    Ok(trailers)
-}
-
-/// Disables the always on top flag for the main window.
-#[tauri::command]
-async fn disable_always_on_top(window: tauri::Window) -> Result<(), String> {
-  window.set_always_on_top(false).map_err(|e| e.to_string())?;
-  Ok(())
-}
-
-// Simple greet command for testing
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! Welcome to MoviNight! 🎬", name)
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(AppState {
-            api_key: std::sync::Mutex::new(None),
-            watched_items: std::sync::Mutex::new(Vec::new()),
-            white_list_items: std::sync::Mutex::new(Vec::new()),
-        })
+        .manage(std::sync::Arc::new(AppState {
+            api_key: Mutex::new(None),
+            data_lock: Mutex::new(()),
+            http: TmdbClient::new(),
+            mcp: Mutex::new(ServerControl::default()),
+        }))
         .invoke_handler(tauri::generate_handler![
-            greet,
             save_api_key,
             load_api_key,
             get_movie_genres,
@@ -800,6 +550,10 @@ pub fn run() {
             get_watch_providers,
             search_movies,
             search_tv_shows,
+            get_movie_details,
+            get_tv_details,
+            get_trailers,
+            clear_api_cache,
             add_watched_item,
             remove_watched_item,
             get_watched_items,
@@ -808,11 +562,19 @@ pub fn run() {
             remove_white_list_item,
             get_white_list_items,
             is_white_listed,
-            get_movie_details,
-            get_tv_details,
-            get_trailers,
-            disable_always_on_top
+            get_tv_season_details,
+            update_watched_seasons,
+            check_all_new_seasons,
+            disable_always_on_top,
+            get_ai_workspace,
+            save_research,
+            review_proposal,
+            dismiss_suggestion,
+            start_mcp,
+            stop_mcp,
+            mcp_status,
+            backup_library
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .expect("error while running MoviNight");
 }
