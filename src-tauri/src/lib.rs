@@ -3,6 +3,7 @@ use std::{path::PathBuf, sync::Mutex};
 use tauri::State;
 mod ai;
 mod api;
+mod discovery;
 mod mcp;
 mod offline;
 mod storage;
@@ -545,6 +546,7 @@ pub fn run() {
             get_watch_providers,
             search_movies,
             search_tv_shows,
+            discovery::discover_titles_page,
             get_movie_details,
             get_tv_details,
             get_trailers,
@@ -569,6 +571,7 @@ pub fn run() {
             get_ai_workspace,
             save_research,
             review_proposal,
+            review_suggestion,
             dismiss_suggestion,
             start_mcp,
             stop_mcp,

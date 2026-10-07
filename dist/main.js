@@ -1,7 +1,7 @@
 const { invoke } = window.__TAURI__.core;
 
 // Application state
-let currentContentType = 'movie';
+let currentContentType = 'all';
 let selectedGenres = [];
 let selectedProviders = [];
 let selectedLanguage = null;
@@ -34,6 +34,8 @@ let detailsGeneration = 0;
 let activeDetailsItem = null;
 let activeProposalId = null;
 let proposalRenderKey = '';
+let suggestionRenderKey = '';
+let seasonSuggestionRenderKey = '';
 const reviewingProposals = new Set();
 let currentSeasonTrackerId = null; // ID of TV show currently open in season tracker
 
@@ -277,13 +279,14 @@ function switchPage(pageType) {
   document.querySelectorAll('.main-content > .page-content').forEach(page => page.style.display = page.id === `${pageType}-page` ? 'block' : 'none');
   if (pageType === 'watched') { loadWatchedItems().then(displayWatchedItems); }
   if (pageType === 'white-list') { loadWhiteListItems().then(displayWhiteListItems); }
-  if (['research', 'picks', 'white-list'].includes(pageType)) refreshAi();
+  if (['research', 'picks', 'white-list', 'watched'].includes(pageType)) refreshAi();
 }
 
 async function loadWatchedItems() {
   try {
     watchedItems = await invoke('get_watched_items');
     updateWatchedStats();
+    renderSeasonSuggestions();
     scheduleOfflineLibrary();
   } catch (error) {
     console.error('Failed to load watched items:', error);
@@ -601,8 +604,8 @@ async function switchContentType(type) {
     { value: 'first_air_date.asc', text: 'Air Date (Oldest First)' }
   ];
 
-  const options = type === 'movie' ? movieOptions : tvOptions;
-  const defaultSort = type === 'movie' ? 'release_date.desc' : 'first_air_date.desc';
+  const options = type === 'tv' ? tvOptions : movieOptions;
+  const defaultSort = 'popularity.desc';
 
   sortSelect.innerHTML = options.map(opt =>
     `<option value="${opt.value}">${opt.text}</option>`
@@ -621,9 +624,17 @@ async function loadGenres() {
   const type = currentContentType;
   try {
     genresContainer.textContent = 'Loading genres…';
-    const genres = await invoke(type === 'movie' ? 'get_movie_genres' : 'get_tv_genres');
+    const lists = await Promise.all((type === 'all' ? ['movie','tv'] : [type]).map(async kind => {
+      const genres = await invoke(kind === 'movie' ? 'get_movie_genres' : 'get_tv_genres');
+      allGenres[kind] = genres;
+      return genres;
+    }));
+    const genres = [...new Map(lists.flat().map(g => [g.id,g])).values()].sort((a,b) => a.name.localeCompare(b.name));
     if (type !== currentContentType) return;
     allGenres[type] = genres;
+    document.querySelector('#genres-dropdown .dropdown-panel p').textContent = type === 'all'
+      ? 'Any selected genre can match. Movie and TV genres have separate entries; select from both to include both formats.'
+      : 'Any selected genre can match.';
     renderGenres(genres);
     updateFilterSummary();
   } catch (error) { if (type === currentContentType) genresContainer.textContent = `Could not load genres: ${error}`; }
@@ -686,7 +697,8 @@ async function loadWatchProviders() {
   const type = currentContentType;
   try {
     providersContainer.textContent = 'Loading providers…';
-    const providers = await invoke('get_watch_providers', { contentType: type });
+    const lists = await Promise.all((type === 'all' ? ['movie','tv'] : [type]).map(contentType => invoke('get_watch_providers', { contentType })));
+    const providers = [...new Map(lists.flat().map(p => [p.provider_id,p])).values()];
     if (type !== currentContentType) return;
     providersContainer.innerHTML = providers.sort((a,b) => providerRank(a) - providerRank(b) || a.provider_name.localeCompare(b.provider_name)).map(provider => `<button class="provider-chip ${selectedProviders.includes(provider.provider_id) ? 'selected' : ''}" data-id="${provider.provider_id}" aria-pressed="${selectedProviders.includes(provider.provider_id)}">${provider.logo_path ? `<img src="https://image.tmdb.org/t/p/w92${escapeHtml(provider.logo_path)}" alt="" loading="lazy">` : ''}${escapeHtml(provider.provider_name)}</button>`).join('');
     providersContainer.querySelectorAll('.provider-chip').forEach(chip => chip.addEventListener('click', () => toggleProvider(Number(chip.dataset.id))));
@@ -758,22 +770,30 @@ function isCompleteDiscoverTitle(item) {
 async function searchContent(appendResults = false) {
   const generation = discoverGeneration;
   const type = currentContentType;
-  const page = appendResults ? currentPage + 1 : 1;
+  let page = appendResults ? currentPage + 1 : 1;
   const filters = { ...currentFilters };
   const more = document.getElementById('view-more-btn');
   document.getElementById('search-btn').disabled = true;
   try {
     if (!appendResults) { resultsGrid.innerHTML = ''; showLoading(); }
     else { more.textContent = 'Loading…'; more.disabled = true; }
-    const response = await invoke(type === 'movie' ? 'search_movies' : 'search_tv_shows', {
-      query: '', page, yearFrom: filters.yearFrom, yearTo: filters.yearTo, genreIds: filters.genreIds,
-      sortBy: filters.sortBy, excludeAnimation: filters.excludeAnimation, withWatchProviders: filters.watchProviders,
-      withOriginalLanguage: filters.originalLanguage, minRating: filters.minRating
-    });
-    if (generation !== discoverGeneration || type !== currentContentType) return;
-    currentPage = page;
-    totalPages = Math.min(500, response.total_pages);
-    const fresh = response.results.filter(item => (!filters.hideIncomplete || isCompleteDiscoverTitle(item)) && (!appendResults || !allResults.some(existing => existing.id === item.id)));
+    let response, fresh;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      response = await invoke('discover_titles_page', {
+        pageNumber: page, filters: {
+          content_type: type, year_from: filters.yearFrom, year_to: filters.yearTo, genre_ids: filters.genreIds,
+          sort_by: filters.sortBy, exclude_animation: filters.excludeAnimation, with_watch_providers: filters.watchProviders,
+          with_original_language: filters.originalLanguage, min_rating: filters.minRating, hide_incomplete: filters.hideIncomplete
+        }
+      });
+      if (generation !== discoverGeneration || type !== currentContentType) return;
+      currentPage = page;
+      totalPages = Math.min(500, response.total_pages);
+      fresh = response.results.filter(item => (!filters.hideIncomplete || isCompleteDiscoverTitle(item)) && (!appendResults || !allResults.some(existing => existing.id === item.id && existing.content_type === item.content_type)));
+      if (fresh.length || !filters.hideIncomplete || page >= totalPages) break;
+      // TMDB has no poster-existence filter. Continue over posterless pages automatically.
+      if (attempt < 9) page++;
+    }
     allResults = appendResults ? [...allResults, ...fresh] : fresh;
     await displayResults({ ...response, results: allResults }, appendResults, fresh);
   } catch (error) {
@@ -806,6 +826,7 @@ function showError(message) { notify(message, 'error'); }
 function showSuccess(message) { notify(message, 'success'); }
 
 function displayResults(response, isAppending = false, newResults = []) {
+  emptyState.querySelector('.empty-tip').hidden = true;
   if (!isAppending) {
   hideAllStates();
   }
@@ -817,8 +838,8 @@ function displayResults(response, isAppending = false, newResults = []) {
     emptyState.style.display = 'block';
     }
     if (currentFilters.hideIncomplete && currentPage < totalPages) {
-      emptyState.querySelector('h3').textContent = 'No eligible titles on this page';
-      emptyState.querySelector('p').textContent = 'Load more titles or turn off the incomplete-title filter.';
+      emptyState.querySelector('h3').textContent = 'No complete titles in the pages checked';
+      emptyState.querySelector('p').textContent = 'Continue searching more pages, or adjust your filters.';
       emptyState.style.display = 'block';
       viewMoreContainer.style.display = 'flex';
     }
@@ -854,7 +875,7 @@ function displayResults(response, isAppending = false, newResults = []) {
   // Keep the compact controls and movie row visible together; do not scroll on startup.
 }
 
-function renderResultCard(item) { return libraryCard({ ...item, content_type: currentContentType }, 'browse'); }
+function renderResultCard(item) { return libraryCard(item, 'browse'); }
 
 function clearResults() {
   resultsGrid.innerHTML = '';
@@ -1442,7 +1463,7 @@ function updateFilterSummary() {
   const lang = languageContainer.querySelector(`[data-id="${selectedLanguage || ''}"]`);
   document.getElementById('language-summary').textContent = selectedLanguage ? lang?.textContent || selectedLanguage : 'Any language';
   document.getElementById('providers-summary').textContent = selectedProviders.length ? `${selectedProviders.length} selected` : 'Any provider';
-  document.getElementById('filter-status').textContent = `${currentContentType === 'movie' ? 'Movies' : 'TV shows'} · ${names.length ? names.join(' or ') : 'all genres'}`;
+  document.getElementById('filter-status').textContent = `${currentContentType === 'all' ? 'Movies & TV shows' : currentContentType === 'movie' ? 'Movies' : 'TV shows'} · ${names.length ? names.join(' or ') : 'all genres'}`;
 }
 async function loadNamePage(append) {
   if (nameLoading) return;
@@ -1534,6 +1555,7 @@ async function refreshAi(initial = false) {
     document.getElementById('research-agent-note').textContent = aiWorkspace.research.agent_note || "Your agent's progress and unmatched titles will appear here.";
     renderProposals(aiWorkspace.proposals);
     renderSuggestions(aiWorkspace.suggestions);
+    renderSeasonSuggestions();
   } catch (error) { showError(`Could not read AI workspace: ${error}`); }
   finally { aiRefreshing = false; }
 }
@@ -1563,10 +1585,13 @@ function renderDetailActions(item, proposal) {
 }
 function renderProposals(proposals) {
   document.getElementById('proposal-count').textContent = proposals.length;
+  document.getElementById('suggestions-proposal-count').textContent = proposals.length;
   const key = JSON.stringify([aiWorkspace?.research.id, proposals]);
   if (key === proposalRenderKey) return;
   proposalRenderKey = key;
-  document.getElementById('proposal-list').innerHTML = proposals.length ? proposals.map(p => libraryCard(p.item, 'proposal', p)).join('') : '<p class="help-text review-empty">No matches to review yet. Paste your list in Reel Research and ask your connected agent to find titles.</p>';
+  const html = proposals.length ? proposals.map(p => libraryCard(p.item, 'proposal', p)).join('') : '<p class="help-text review-empty">No matches to review yet. Paste your list in Reel Research and ask your connected agent to find titles.</p>';
+  document.getElementById('proposal-list').innerHTML = html;
+  document.getElementById('suggestions-proposal-list').innerHTML = html;
   if (activeProposalId && !proposals.some(p => p.proposal_id === activeProposalId)) closeMovieDetails();
 }
 async function reviewProposal(button) {
@@ -1576,10 +1601,10 @@ async function reviewProposal(button) {
   const controls = document.querySelectorAll('[data-proposal]');
   controls.forEach(b => { if (b.dataset.proposal === id) b.disabled = true; });
   try {
-    await invoke('review_proposal', { proposalId: id, approve: button.dataset.review === 'approve' });
+    const result = await invoke('review_proposal', { proposalId: id, approve: button.dataset.review === 'approve' });
     if (activeProposalId === id) closeMovieDetails();
     await loadWhiteListItems(); displayWhiteListItems(); await refreshAi();
-    showSuccess(button.dataset.review === 'approve' ? 'Approved and saved to your waitlist' : 'Match removed from review');
+    showSuccess(button.dataset.review === 'approve' ? result.destination === 'watched' ? 'Approved · kept in Watched with your progress' : 'Approved · saved in Waitlist' : 'Match removed from review');
   } catch (error) { showError(String(error)); }
   finally {
     reviewingProposals.delete(id);
@@ -1589,7 +1614,26 @@ async function reviewProposal(button) {
 
 function renderSuggestions(suggestions) {
   document.getElementById('picks-empty').hidden = suggestions.length > 0;
-  document.getElementById('suggestion-list').innerHTML = [...suggestions].reverse().map(s => `<div class="suggestion"><div class="suggestion-label">${s.source === 'watched' ? '↻ REWATCH' : '☆ FROM YOUR WAITLIST'}</div>${libraryCard(s.item, 'browse')}<div class="suggestion-reason"><p>${escapeHtml(s.reason)}</p>${s.source === 'watched' ? `<span class="help-text">Last marked watched: ${escapeHtml(s.item.watched_date)}</span>` : ''}<button class="text-button" data-dismiss="${escapeHtml(s.suggestion_id)}">Dismiss pick</button></div></div>`).join('');
+  const key = JSON.stringify([suggestions, watchedItems, whiteListItems]);
+  if (key === suggestionRenderKey) return;
+  suggestionRenderKey = key;
+  document.getElementById('suggestion-list').innerHTML = [...suggestions].reverse().map(suggestionCard).join('');
+}
+function suggestionCard(s) {
+  const watched = watchedItems.find(w => w.id === s.item.id && w.content_type === s.item.content_type);
+  const label = s.recommended_seasons?.length ? `NEW SEASONS · ${s.recommended_seasons.join(', ')}` : watched ? '↻ REWATCH' : s.source === 'waitlist' ? '☆ FROM YOUR WAITLIST' : '✧ DISCOVERED FOR YOU';
+  return `<div class="suggestion" data-suggestion-id="${escapeHtml(s.suggestion_id)}"><div class="suggestion-label">${escapeHtml(label)} · ${s.status === 'approved' ? 'APPROVED' : 'PENDING APPROVAL'}</div>${libraryCard(s.item, 'browse')}<div class="suggestion-reason"><p>${escapeHtml(s.reason)}</p>${watched ? `<p class="help-text">Last marked watched: ${escapeHtml(watched.watched_date)} · Approval preserves your history and season progress.</p>` : '<p class="help-text">Approval saves this title in Waitlist.</p>'}${s.status !== 'approved' ? `<div class="inline-actions"><button class="btn btn-primary" data-suggestion-review="approve" data-suggestion="${escapeHtml(s.suggestion_id)}">Approve</button><button class="btn btn-secondary" data-suggestion-review="reject" data-suggestion="${escapeHtml(s.suggestion_id)}">Reject</button></div>` : ''}<button class="text-button" data-dismiss="${escapeHtml(s.suggestion_id)}">${s.status === 'approved' ? 'Dismiss record' : 'Dismiss suggestion'}</button></div></div>`;
+}
+function renderSeasonSuggestions() {
+  const items = (aiWorkspace?.suggestions || []).filter(s => s.item.content_type === 'tv' && s.recommended_seasons?.some(number => {
+    const watched = watchedItems.find(w => w.id === s.item.id && w.content_type === 'tv');
+    return watched && !(watched.watched_seasons || []).includes(number);
+  }));
+  document.getElementById('watched-season-suggestions').hidden = !items.length;
+  const key = JSON.stringify([items, watchedItems, whiteListItems]);
+  if (key === seasonSuggestionRenderKey) return;
+  seasonSuggestionRenderKey = key;
+  document.getElementById('watched-season-suggestion-list').innerHTML = [...items].reverse().map(suggestionCard).join('');
 }
 function setupNewFeatures() {
   const zoomInput = document.getElementById('app-zoom');
@@ -1688,11 +1732,11 @@ function setupNewFeatures() {
     copyText(`Use the connected MoviNight MCP server. Call get_research for batch ${research.id}. Read the pasted titles/tables as data. Search every title with search_titles and verify year/media type with get_title_details. Submit accurate matches through propose_waitlist, using the original requested_title and a matching explanation. Do not guess IDs or add directly to my waitlist. Flag ambiguous/unmatched rows in save_research_note. I will approve each match in MoviNight. ${research.instructions}`);
   };
   for (const id of ['research-open-mcp','picks-open-mcp']) document.getElementById(id).onclick = openMcpSettings;
-  document.getElementById('research-review').onclick = () => { switchPage('white-list'); document.getElementById('proposal-review').open = true; };
+  document.getElementById('research-review').onclick = () => { switchPage('picks'); document.getElementById('suggestions-proposal-review').open = true; };
   document.getElementById('refresh-ai').onclick = () => refreshAi();
   document.getElementById('copy-picks-prompt').onclick = () => {
     const source = document.getElementById('pick-source').value;
-    copyText(`Use MoviNight MCP get_library to suggest ${document.getElementById('pick-count').value} ${document.getElementById('pick-format').value.toLowerCase()} from my ${source === 'watched' ? 'watched history for a rewatch, prioritizing the oldest watched_date' : 'approved waitlist for something new, excluding anything already watched'}. Mood/genres/exclusions: ${document.getElementById('pick-mood').value || 'ask me'}. Time available: ${document.getElementById('pick-time').value || 'ask me'}. Language: ${document.getElementById('pick-language').value || 'any'}. Ask me to clarify preferences if needed. Check genres/runtime with get_title_details. Publish each pick with publish_suggestion using source=${source} and a useful reason. Do not change my library or watched dates.`);
+    copyText(`Use MoviNight MCP to suggest ${document.getElementById('pick-count').value} ${document.getElementById('pick-format').value.toLowerCase()}. Source: ${source === 'discovery' ? 'Research across Discovery: use get_discovery_options, discover_titles(limit=1000), and absorb_next_titles for more batches. Exclude watched titles for a new watch.' : source === 'watched' ? 'My watched history for a rewatch, prioritizing the oldest watched_date.' : 'My approved waitlist for something new, excluding watched titles.'} Mood/genres/exclusions: ${document.getElementById('pick-mood').value || 'ask me'}. Time available: ${document.getElementById('pick-time').value || 'ask me'}. Language: ${document.getElementById('pick-language').value || 'any'}. Read get_library and check genres/runtime with get_title_details. Publish every pick to Suggestions with publish_suggestion using source=${source} and a useful reason. I will approve in the app. Preserve watched dates and season progress.`);
   };
   document.addEventListener('click', event => {
     const button = event.target.closest('[data-review]');
@@ -1700,11 +1744,28 @@ function setupNewFeatures() {
     event.stopPropagation();
     reviewProposal(button);
   });
-  document.getElementById('suggestion-list').addEventListener('click', async event => {
+  document.addEventListener('click', async event => {
+    const review = event.target.closest('[data-suggestion-review]');
+    if (review) {
+      if (review.disabled) return;
+      event.stopPropagation();
+      const id = review.dataset.suggestion;
+      const controls = document.querySelectorAll(`[data-suggestion="${id}"]`);
+      controls.forEach(b => b.disabled = true);
+      try {
+        const result = await invoke('review_suggestion', { suggestionId: id, approve: review.dataset.suggestionReview === 'approve' });
+        await Promise.all([loadWhiteListItems(), loadWatchedItems()]);
+        displayWhiteListItems(); displayWatchedItems(); await refreshAi();
+        showSuccess(result.status === 'rejected' ? 'Suggestion rejected · it can return in a later request' : result.destination === 'watched' ? 'Approved · kept in Watched with your progress' : 'Approved · saved in Waitlist');
+      } catch (error) { showError(String(error)); }
+      finally { controls.forEach(b => b.disabled = false); }
+      return;
+    }
     const button = event.target.closest('[data-dismiss]'); if (!button) return;
+    event.stopPropagation();
     try { await invoke('dismiss_suggestion', { suggestionId: button.dataset.dismiss }); await refreshAi(); } catch (error) { showError(String(error)); }
   });
-  setInterval(() => { if (['research','picks','white-list'].includes(currentPageType) && !document.hidden) refreshAi(); }, 4000);
+  setInterval(() => { if (['research','picks','white-list','watched'].includes(currentPageType) && !document.hidden) refreshAi(); }, 4000);
 }
 
 

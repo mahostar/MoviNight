@@ -8,6 +8,8 @@ A desktop movie and TV companion built with **Tauri 2 · Rust · JavaScript**.
 
 **[Download MoviNight 1.3.1 for Windows](https://github.com/mahostar/MoviNight/releases/tag/MoviNight-v1.3.1)**
 
+Current source and local Windows build: **1.3.2**. The download above is the latest published installer.
+
 [Explore the features](#what-you-can-do) · [Connect an AI agent](MCP_GUIDE.md) · [Build the app](#development)
 
 </div>
@@ -16,7 +18,7 @@ A desktop movie and TV companion built with **Tauri 2 · Rust · JavaScript**.
 
 ### Discover something worth watching
 
-Combine movie/TV type, match-any genres, release years, language and rating. Hide animation or incomplete titles, and see which cards are already in your library.
+Choose All, movies or TV, and combine match-any genres, release years, language and rating. Hide animation or incomplete titles, and see which cards are already in your library.
 
 ![Filtered Discover with saved-library indicators](branding/screenshots/discover.png)
 
@@ -28,9 +30,9 @@ Paste a table in **Reel Research**. A connected MCP client searches TMDB, checks
 
 ![Three verified matches awaiting in-app approval](branding/screenshots/proposal-review.png)
 
-### Picks from your own library
+### AI research and Suggestions
 
-Use **AI Picks** for a new watch from your waitlist or a rewatch from your history. Each suggestion includes its source, a reason and, for rewatches, your saved watched date.
+Use **Suggestions** for research across Discovery, a new watch from your waitlist, or a rewatch from history. Connected agents can absorb up to 1,000 useful title records per call, continue with the next batch, and use the same filter menus as you. Review pending picks and keep an approved history. Watched approvals preserve dates and season progress; aired unwatched season recommendations also appear in **Watched → AI season suggestions**.
 
 ![Five populated library-based suggestions with explanations](branding/screenshots/ai-picks.png)
 
@@ -82,7 +84,7 @@ Downloaded metadata and images stay on this device. Choose a cache limit, disabl
 | **Cleaner discovery** | Optionally hide missing posters and titles rated exactly 0 or 10, alongside the animation filter. |
 | **Title details** | Browse metadata, seasons and trailers from TMDB. |
 | **Reel Research** | Save pasted lists or tables locally. A connected AI agent searches TMDB and proposes verified matches for your approval. |
-| **AI Picks** | Request recommendations from your approved waitlist or revisits from your watched history. |
+| **Suggestions** | Request recommendations from your approved waitlist or revisits from your watched history. |
 | **Copy documentation** | Open **Settings → MCP Server → Copy documentation**. Copy the entire guide even while the server is stopped. |
 
 ## Get started
@@ -96,15 +98,15 @@ Downloaded metadata and images stay on this device. Choose a cache limit, disabl
 
 Open **Settings → MCP Server**, start the server, and configure a local MCP client with the displayed address and connection token. Use **Copy documentation** for the full setup guide, tool descriptions and example prompts.
 
-In **Reel Research**, paste your titles, save the batch, and copy the research prompt to your connected client. Review proposed matches in **Waitlist** before approving them.
+In **Reel Research**, paste your titles, save the batch, and copy the research prompt to your connected client. Review proposed matches in **Suggestions → Research matches** before approving them.
 
-MoviNight does not include an AI model. Research and recommendations come from your connected client. The MCP server listens on loopback; remote services cannot connect to it directly. Agents can propose titles and publish picks, while approval stays in the app.
+MoviNight does not include an AI model. Research and recommendations come from your connected client. The MCP server listens on loopback; remote services cannot connect to it directly. Agents can propose titles and publish picks, while approval stays in the app. MCP instructions tell connected agents to publish researched recommendations to Suggestions, even without a pasted list.
 
 See the [complete MCP guide](MCP_GUIDE.md).
 
 ## Your library & upgrades
 
-Install **1.3.1** over your existing installation using the same installation scope. The app identifier and saved-data location remain the same; uninstalling or clearing your library is unnecessary.
+Install **1.3.2** over your existing installation using the same installation scope. The app identifier and saved-data location remain the same; uninstalling or clearing your library is unnecessary.
 
 On Windows, data lives in **%APPDATA%\movinight**:
 

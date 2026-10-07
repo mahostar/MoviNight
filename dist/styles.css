@@ -2992,3 +2992,16 @@ body,.app { min-height: calc(100vh / var(--app-zoom,1)); }
 .proposal-actions .btn { display: inline-flex; align-items: center; justify-content: center; text-align: center; }
 .detail-actions { justify-content: center; }
 .search-name-section { width: 100%; margin-inline: auto; }
+/* Keep all six navigation labels readable, including Suggestions, on phones. */
+@media (max-width: 1100px) {
+  .compact-discover .type-filter { grid-column: span 2; }
+}
+@media (max-width: 600px) {
+  .header-nav { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); }
+  .header-nav .nav-btn { min-width: 0; min-height: 40px; white-space: normal; overflow: visible; }
+  .compact-discover .type-filter { grid-column: 1 / -1; }
+}
+#year-to-combo .year-dropdown { left: auto; right: 0; }
+@media (max-width: 760px) {
+  #genres-dropdown .dropdown-panel { left: 0; right: auto; }
+}

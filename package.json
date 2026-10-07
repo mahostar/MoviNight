@@ -3,11 +3,12 @@
     "@tauri-apps/plugin-sql": "^2.2.1"
   },
   "name": "movinight",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "private": true,
   "scripts": {
     "check": "node --check dist/main.js",
     "test:backend": "cargo test --manifest-path src-tauri/Cargo.toml --lib",
+    "test:discovery-filter": "node tests/discovery-filter-check.cjs",
     "test:runtime": "node tests/runtime-check.cjs",
     "test:responsive": "node tests/responsive-check.cjs",
     "build": "cargo tauri build"

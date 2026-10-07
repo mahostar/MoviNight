@@ -28,6 +28,12 @@ pub struct TmdbClient {
     flights: Mutex<HashMap<String, std::sync::Weak<tokio::sync::Mutex<()>>>>,
 }
 impl TmdbClient {
+    #[cfg(test)]
+    pub(crate) fn for_test(base_url: String) -> Self {
+        let mut client = Self::new();
+        client.base_url = base_url;
+        client
+    }
     pub fn new() -> Self {
         Self {
             base_url: "https://api.themoviedb.org/3".into(),
@@ -220,7 +226,7 @@ pub async fn get_watch_providers(
         .await?
         .results)
 }
-fn discover_params(
+pub(crate) fn discover_params(
     kind: &str,
     page: u32,
     year_from: Option<u32>,
@@ -232,6 +238,36 @@ fn discover_params(
     language: Option<String>,
     rating: Option<f64>,
 ) -> Result<Vec<(String, String)>, ApiError> {
+    validate_type(kind)?;
+    let sort_by = sort_by
+        .replace("first_air_date.", "release_date.")
+        .replace("primary_release_date.", "release_date.");
+    if ![
+        "popularity.desc",
+        "popularity.asc",
+        "vote_average.desc",
+        "vote_average.asc",
+        "release_date.desc",
+        "release_date.asc",
+    ]
+    .contains(&sort_by.as_str())
+    {
+        return Err(ApiError::Invalid("Unsupported discovery sort order".into()));
+    }
+    if year_from
+        .into_iter()
+        .chain(year_to)
+        .any(|y| !(1..=9999).contains(&y))
+    {
+        return Err(ApiError::Invalid("Year must be between 1 and 9999".into()));
+    }
+    if language.as_ref().is_some_and(|l| {
+        !l.is_empty() && (l.len() != 2 || !l.bytes().all(|b| b.is_ascii_lowercase()))
+    }) {
+        return Err(ApiError::Invalid(
+            "Use a two-letter original language code".into(),
+        ));
+    }
     if !(1..=500).contains(&page) {
         return Err(ApiError::Invalid("Page must be between 1 and 500".into()));
     }
