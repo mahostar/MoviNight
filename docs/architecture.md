@@ -1,6 +1,6 @@
 # MoviNight — architecture and data flows
 
-This document describes the **implemented 1.3.3 source**, inspected on **8 October 2026**. UI captures come from a local Windows debug build. A published 1.3.3 installer or hosted AI service is not implied.
+This document describes the **implemented 1.3.3 source**, inspected on **8 October 2026**. UI captures come from a local Windows debug build. The [published Windows release](https://github.com/mahostar/MoviNight/releases/tag/MoviNight-v1.3.3) uses the same application source; its attached build information records the build commit and verification scope.
 
 ## Components and network
 

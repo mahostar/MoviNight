@@ -1,6 +1,6 @@
 # MoviNight documentation
 
-Documentation for **MoviNight 1.3.3**, checked against the repository and local desktop UI on **8 October 2026**. The published Windows installer is currently 1.3.1; these pages also cover features available in the 1.3.3 source and local build.
+Documentation for **MoviNight 1.3.3**, checked against the repository and local desktop UI on **8 October 2026**. [Download the published Windows x64 release](https://github.com/mahostar/MoviNight/releases/tag/MoviNight-v1.3.3), including setup EXE, MSI, checksums and guides.
 
 ![MoviNight Discovery](../branding/screenshots/v1.3.3/discover.png)
 

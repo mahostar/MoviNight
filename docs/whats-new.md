@@ -1,6 +1,6 @@
 # What's new in the current MoviNight UI
 
-These features are implemented in **1.3.3 source and the local Windows build**. The published installer currently remains **1.3.1**.
+These features are included in the [published MoviNight 1.3.3 Windows release](https://github.com/mahostar/MoviNight/releases/tag/MoviNight-v1.3.3), with setup EXE and MSI installers.
 
 ## 1.3.3 — portable progress snapshots
 

@@ -8,11 +8,11 @@ A Windows desktop companion for movies and series, built with **Tauri 2, Rust, a
 
 Keep a watched library, plan what comes next, and let a connected AI agent research recommendations against your actual progress.
 
-**[Download for Windows](https://github.com/mahostar/MoviNight/releases/latest)** · **[Documentation](docs/README.md)** · **[Architecture](docs/architecture.md)** · **[Connect your agent](MCP_GUIDE.md)**
+**[Download MoviNight 1.3.3 for Windows](https://github.com/mahostar/MoviNight/releases/tag/MoviNight-v1.3.3)** · **[Documentation](docs/README.md)** · **[Architecture](docs/architecture.md)** · **[Connect your agent](MCP_GUIDE.md)**
 
-**Current source: 1.3.3** · **Latest published installer: 1.3.1**
+**Current source and published Windows installer: 1.3.3**
 
-The screenshots below show 1.3.3. A 1.3.3 GitHub release has not been published.
+The release includes Windows x64 setup EXE and MSI installers, checksums, and connection and snapshot guides. The screenshots below show the 1.3.3 interface.
 
 </div>
 

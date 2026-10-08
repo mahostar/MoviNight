@@ -4,7 +4,7 @@ Captured on **8 October 2026** from the actual Windows debug WebView. Most views
 
 TMDB supplies metadata and artwork. A separate demonstration library has eight watched and eight waitlisted titles, three verified research matches, and five demonstration suggestions covering Discovery, waitlist, rewatch history and an aired season. Dates and explanations are sample data. Personal viewing history, TMDB keys and MCP tokens are not shown. MCP is stopped in its connection capture.
 
-These images show the implemented UI. They do not imply that sample recommendations were independently generated in a fresh MCP session or that a 1.3.3 installer has been published. The watched-library capture shows a completed season recommendation removed from its section; other captures show that same demonstration season still pending.
+These images show the interface included in the [published 1.3.3 release](https://github.com/mahostar/MoviNight/releases/tag/MoviNight-v1.3.3). Sample recommendation explanations are demonstration fixtures rather than outputs from a fresh MCP session. The watched-library capture shows a completed season recommendation removed from its section; other captures show that same demonstration season still pending.
 
 ## Discovery and lookup
 
