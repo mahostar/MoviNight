@@ -1,192 +1,159 @@
 <div align="center">
 
-<img src="branding/logoGit.png" alt="MoviNight" width="640">
+<img src="branding/logoGit.png" alt="MoviNight" width="460">
 
-**Find your next movie. Keep your viewing history. Research with your AI agent.**
+### Your viewing history. Your next discovery. Your AI agent.
 
-A desktop movie and TV companion built with **Tauri 2 · Rust · JavaScript**.
+A Windows desktop companion for movies and series, built with **Tauri 2, Rust, and JavaScript**.
 
-**[Download MoviNight 1.3.1 for Windows](https://github.com/mahostar/MoviNight/releases/tag/MoviNight-v1.3.1)**
+Keep a watched library, plan what comes next, and let a connected AI agent research recommendations against your actual progress.
 
-Current source and local Windows build: **1.3.3**. The download above is a published installer; 1.3.3 has not been published as a GitHub release.
+**[Download for Windows](https://github.com/mahostar/MoviNight/releases/latest)** · **[Documentation](docs/README.md)** · **[Architecture](docs/architecture.md)** · **[Connect your agent](MCP_GUIDE.md)**
 
-[Explore the features](#what-you-can-do) · [Connect an AI agent](MCP_GUIDE.md) · [Build the app](#development)
+**Current source: 1.3.3** · **Latest published installer: 1.3.1**
+
+The screenshots below show 1.3.3. A 1.3.3 GitHub release has not been published.
 
 </div>
 
-![MoviNight demo](branding/demo.gif)
+![MoviNight 1.3.3 — movies and series together in Discovery, with years, language, rating and content filters](branding/screenshots/v1.3.3/discover.png)
 
-### Discover something worth watching
+## A library your agent can understand
 
-Choose All, movies or TV, and combine match-any genres, release years, language and rating. Hide animation or incomplete titles, and see which cards are already in your library.
+Most recommendation prompts start without your viewing history. MoviNight gives a connected local MCP client access to your watched titles, waitlist, and tracked seasons, plus tools to explore the TMDB catalogue.
 
-![Filtered Discover with saved-library indicators](branding/screenshots/discover.png)
+An agent can read **1,000 useful title records per Discovery call**, continue with the next thousand, verify its picks, and publish them to **Suggestions** with an explanation. You approve the results inside the app.
 
-### Research → verify → approve
+![Fresh suggestion cards — Discovery picks, a waitlist choice, a season recommendation and approved rewatch history](branding/screenshots/v1.3.3/ai-suggestions.png)
 
-Paste a table in **Reel Research**. A connected MCP client searches TMDB, checks title/year/format, and stages matches. Review verified matches as poster cards, then open details for the original request and matching explanation. Approve or remove a match from either the card or popup; only approval adds it to Waitlist.
+```mermaid
+flowchart LR
+    H["Watched history<br/>and waitlist"] --> A["Connected AI agent"]
+    D["Discovery<br/>1,000 titles per call"] --> A
+    A --> V["Verify title, year,<br/>type and seasons"]
+    V --> S["Suggestions<br/>Reasons + pending approval"]
+    S --> U["You approve in MoviNight"]
+    U --> W["New titles → Waitlist<br/>Watched titles → keep progress"]
+```
 
-![Research table with completed matching notes](branding/screenshots/reel-research.png)
+MoviNight supplies the context and tools; your configured MCP client supplies the AI. Keeping the app open and starting its MCP server enables the connection. It does not run a model or start research on its own.
 
-![Three verified matches awaiting in-app approval](branding/screenshots/proposal-review.png)
+## Find the gaps in your watch history
 
-### AI research and Suggestions
+Search **All**, **Movies**, or **TV Shows**. Combine release years, original language, match-any genres, minimum rating, streaming providers, and sorting. Cards show whether a title is already watched or waiting.
 
-Use **Suggestions** for research across Discovery, a new watch from your waitlist, or a rewatch from history. Connected agents can absorb up to 1,000 useful title records per call, continue with the next batch, and use the same filter menus as you. Review pending picks and keep an approved history. Watched approvals preserve dates and season progress; aired unwatched season recommendations also appear in **Watched → AI season suggestions**.
+The agent gets the same Discovery filter capabilities, with larger research batches and compact metadata: titles, descriptions, ratings, vote counts, dates, and relevant progress. Poster and trailer URLs stay out of MCP research responses.
 
-![Five populated library-based suggestions with explanations](branding/screenshots/ai-picks.png)
+![Searchable streaming provider picker](branding/screenshots/v1.3.3/streaming-platforms.png)
+
+Provider availability in the UI uses the **US region**. MCP queries can select a region. All interleaves independently ranked movie and TV results. The incomplete-title filter hides missing posters and ratings of exactly 0 or 10; it is a metadata heuristic, not a spam classifier.
+
+## Research a list, then review the matches
+
+Paste text, Markdown tables, CSV, or spreadsheet cells into **Reel Research**. Save the batch and ask your connected agent to check title, release year, and format against TMDB. Proposals become poster cards in **Suggestions → Research matches** and **Waitlist → Review AI matches**.
+
+![Current research-match cards, ready for approval](branding/screenshots/v1.3.3/proposal-review.png)
+
+Open a card to compare the original request with the canonical title and matching explanation. Approve or remove a match from its card or detail popup.
 
 <details>
-<summary><strong>See search, libraries, season tracking and connection controls</strong></summary>
+<summary><strong>See the research workspace and detailed match review</strong></summary>
 
-**Title search** spans movies and TV shows and supports more results.
+![Saved research table, instructions and matching progress](branding/screenshots/v1.3.3/reel-research.png)
 
-![Movie and TV title search](branding/screenshots/title-search.png)
-
-**Watched** keeps dates and tracked seasons; **Waitlist** keeps your approved choices.
-
-![Watched movies and series with saved dates](branding/screenshots/watched-library.png)
-
-![Populated waitlist after approval](branding/screenshots/waitlist.png)
-
-**Season tracking** lives alongside verified TV details.
-
-![TV metadata and season checkboxes](branding/screenshots/season-tracker.png)
-
-**Streaming platforms** open in a searchable popup, with familiar services first.
-
-![Streaming platform picker with logos](branding/screenshots/streaming-platforms.png)
-
-**MCP documentation** is available inside Settings with a copy button.
-
-![In-app documentation copy](branding/screenshots/mcp-documentation.png)
+![Canonical metadata, original requested title and approval controls](branding/screenshots/v1.3.3/match-details.png)
 
 </details>
 
-### Your library, even without a connection
+## Keep your history and season progress
 
-Downloaded metadata and images stay on this device. Choose a cache limit, disable caching, or clear **only Discover** while retaining saved-library and other downloaded data.
+**Watched** records saved viewing dates and checked TV seasons. **Waitlist** holds titles you plan to watch. Search and Discovery use the same poster-led cards and detail actions.
 
-![Populated offline-cache settings](branding/screenshots/offline-storage.png)
+When you approve a recommendation for a watched title, it stays in Watched with its dates and season progress intact. Aired, unwatched season recommendations appear in **Watched → AI season suggestions**, including after approval; you check off seasons yourself.
 
-*The GIF and screenshots are captured from the real app with an isolated demonstration library and sample dates. Matches and suggestions were published through the actual MCP tools; no personal library or credentials are shown. AI reasoning requires your connected client.*
+![TV details and watched-season progress](branding/screenshots/v1.3.3/season-tracker.png)
 
-## What you can do
+<details>
+<summary><strong>See watched history, waitlist and season recommendations</strong></summary>
 
-| Feature | How it helps |
+![Watched library with demonstration viewing dates](branding/screenshots/v1.3.3/watched-library.png)
+
+![Movie and series waitlist with saved dates](branding/screenshots/v1.3.3/waitlist.png)
+
+![Aired season recommendations inside Watched](branding/screenshots/v1.3.3/season-suggestions.png)
+
+</details>
+
+## Take your progress with you
+
+**Settings → Data transfer** exports a portable ZIP containing watched titles, dates and seasons, waitlist, research batches, pending matches, suggestions and approved history, preferences, and saved-title thumbnails. Browsing cache is excluded.
+
+![Portable ZIP export and import controls in 1.3.3](branding/screenshots/v1.3.3/data-transfer.png)
+
+The TMDB API key is **optional and excluded by default**. Import previews the archive before applying it. **Merge** is the default; full replacement requires an explicit selection and confirmation. Imports create a recovery backup.
+
+Snapshots transfer directly between MoviNight installations. Other applications can read or convert the documented ZIP/JSON format; they need format support to import it directly. See [the snapshot specification](SNAPSHOT_FORMAT.md).
+
+## Explore everything
+
+| Capability | What you can do |
 | --- | --- |
-| **Offline library** | Keep fetched metadata, posters and thumbnails locally. Browse downloaded Discover pages offline; online requests still refresh from TMDB. |
-| **Cache controls** | Enable or disable caching, choose a 1–5 GB cap (4 GB default), and clear only Discover cache while preserving saved-library downloads. |
-| **Comfortable display** | Adjust and save app zoom from 75% to 175% in Settings. |
-| **Streaming & languages** | Search large lists in dedicated popups, with familiar streaming platforms first. |
-| **Discover & search** | Filter by year, genre, language, rating and providers. Selected genres match **any** selection. Search both movies and TV shows by name. |
-| **Waitlist & watched history** | Save titles for later, record watched dates, and track watched TV seasons. |
-| **Cleaner discovery** | Optionally hide missing posters and titles rated exactly 0 or 10, alongside the animation filter. |
-| **Title details** | Browse metadata, seasons and trailers from TMDB. |
-| **Reel Research** | Save pasted lists or tables locally. A connected AI agent searches TMDB and proposes verified matches for your approval. |
-| **Suggestions** | Request recommendations from your approved waitlist or revisits from your watched history. |
-| **Copy documentation** | Open **Settings → MCP Server → Copy documentation**. Copy the entire guide even while the server is stopped. |
+| Discovery | Browse movies, TV, or both; combine years, genres, languages, ratings and providers. |
+| Title search | Search movie and TV names together, then load more results. |
+| Details | Open synopsis, ratings, genres, runtime or TV information, and available trailers. |
+| Watched & Waitlist | Save plans, viewing dates and season progress; filter libraries by format. |
+| Season updates | Check for aired unwatched seasons and review AI season recommendations. |
+| AI Discovery research | Give an agent filter menus and up to 1,000 useful records per call, with continuation cursors. |
+| Reel Research | Save pasted lists, verify ambiguous matches, and revisit saved research batches. |
+| Suggestions | Review discoveries, waitlist picks, rewatches and seasons; retain approved history. |
+| Approval control | Agents propose; you approve. Watched progress survives approval, with duplicate handling. |
+| Offline downloads | Keep fetched metadata and artwork on this device; retry saved-library downloads. |
+| Cache management | Toggle caching, set a 1–5 GB cap (4 GB default), and clear only Discovery browsing data. |
+| Portable snapshots | Export progress and thumbnails, preview imports, merge or replace, and optionally include the API key. |
+| Display & backup | Save 75–175% app zoom and create timestamped library backups. |
+| Connection documentation | Copy the complete MCP guide from Settings, even with the server stopped. |
+
+Read the [user guide](docs/user-guide.md), [architecture and data flows](docs/architecture.md), [current changes](docs/whats-new.md), and [development instructions](docs/development.md).
 
 ## Get started
 
-1. Install MoviNight using an installer built for your platform.
+1. Install the [published Windows build](https://github.com/mahostar/MoviNight/releases/latest), or [build current source](docs/development.md).
 2. Get a [TMDB API key](https://www.themoviedb.org/settings/api).
 3. Open **Settings → TMDB & library**, enter the key, and save.
-4. Explore **Discover**, add titles to **Waitlist**, and track them in **Watched**.
+4. Browse Discovery, save titles to Waitlist, and record progress in Watched.
+5. For AI research, start **Settings → MCP Server** and configure your local MCP client with the displayed URL and token. Use **Copy documentation** for setup instructions.
 
-### Bring your AI agent
+Try asking your connected agent:
 
-Open **Settings → MCP Server**, start the server, and configure a local MCP client with the displayed address and connection token. Use **Copy documentation** for the full setup guide, tool descriptions and example prompts.
+> Read my watched series and waitlist. Research popular crime dramas and mysteries that premiered between 2012 and 2022. Explore thousands of titles, exclude what I already saved, verify your best picks, and publish them to Suggestions with reasons.
 
-In **Reel Research**, paste your titles, save the batch, and copy the research prompt to your connected client. Review proposed matches in **Suggestions → Research matches** before approving them.
+No pasted list is needed for ordinary Discovery research. See the [complete MCP guide](MCP_GUIDE.md) for client configuration, all 12 tools, batch limits and season rules.
 
-MoviNight does not include an AI model. Research and recommendations come from your connected client. The MCP server listens on loopback; remote services cannot connect to it directly. Agents can propose titles and publish picks, while approval stays in the app. MCP instructions tell connected agents to publish researched recommendations to Suggestions, even without a pasted list.
+## Local data and offline behavior
 
-See the [complete MCP guide](MCP_GUIDE.md).
+On Windows, progress is stored under **`%APPDATA%\movinight`** in `watched.json`, `white_list.json`, and `ai_workspace.json`; local TMDB configuration is in `config.json`. JSON writes are atomic, malformed files are preserved, and last-good `.bak` copies are retained.
 
-## Your library & upgrades
+The optional offline cache has a **SQLite index and disk objects**. It stores content you fetched, rather than mirroring the whole catalogue. Previously fetched pages and artwork can be reused during connection failures or TMDB server outages; authentication and rate-limit failures remain visible. Trailers require internet. Clearing Discovery cache retains progress and other downloaded data.
 
-Install **1.3.3** over your existing installation using the same installation scope. The app identifier and saved-data location remain the same; uninstalling or clearing your library is unnecessary.
-
-Use **Settings → Data transfer** to export your progress as a portable ZIP with saved-title thumbnails, watched dates and seasons, waitlist, research, pending approvals, suggestions, and preferences. Browsing cache is excluded. Including your TMDB API key is optional. Preview an import, then merge with current progress or explicitly replace it; the app creates a recovery backup first. See the [snapshot format and merge rules](SNAPSHOT_FORMAT.md).
-
-On Windows, data lives in **%APPDATA%\movinight**:
-
-| File | Contents |
-| --- | --- |
-| watched.json | Watched titles, dates and tracked seasons |
-| white_list.json | Approved waitlist |
-| config.json | Local TMDB configuration |
-| ai_workspace.json | Research, proposals and AI suggestions |
-
-Writes are atomic. Original library files are preserved under **backups/before-1.1.0**, and the last valid file is kept as a **.bak** copy. Malformed files are preserved and reported rather than overwritten. Create an additional timestamped backup through **Settings → Back up library**.
-
-## Offline storage
-
-The offline cache uses a SQLite index and disk objects under **%APPDATA%\\movinight\\offline**. It grows as you browse; the 4 GB default is a maximum, not a reserved allocation. Choose up to 5 GB in Settings. Old browsing entries are evicted first, with saved-library downloads given priority. The cap includes headroom for the index and atomic writes.
-
-Saved cards and watched dates already live locally. With caching enabled, the app downloads metadata and artwork for saved titles in the background; **Download saved library** lets you retry or complete those downloads. Viewed Discover/search pages, title details and reference lists are persisted with their full fetched JSON. Visible posters and provider thumbnails are downloaded at bounded sizes.
-
-Online requests use current TMDB responses (or the short-lived session cache). Persistent data is used only when a network connection fails or TMDB is unavailable, with a banner identifying cached data. Authentication and rate-limit failures are reported rather than covered by stale responses. Offline filters and pages must have been fetched previously; this is a personal cache of browsed content, not a complete TMDB mirror. Video trailers still need internet.
-
-**Clear Discover cache** removes only Discover responses and artwork used exclusively for browsing Discover. Other downloaded search/reference data remains. Downloaded metadata and images for saved-library titles remain, along with every watched/waitlist file. Disabling caching stops new downloads and offline fallback without deleting existing files.
+The MCP listener is opt-in and bound to **`127.0.0.1:37419`**, with a restart-generated bearer token and Host/Origin checks. The TMDB key is not returned by MCP tools. Your connected agent can receive the library data it reads; use a client you trust. See [data boundaries](docs/architecture.md#data-and-connection-boundaries).
 
 ## Development
 
-Install Rust, Node.js, the Tauri CLI and the native Tauri prerequisites for your platform, then run:
-
-~~~bash
+```bash
 git clone https://github.com/mahostar/MoviNight.git
 cd MoviNight
 npm install
-cargo tauri dev
-~~~
-
-The frontend source lives in **dist/** and is embedded by Tauri.
-
-### Check & build
-
-~~~bash
 npm run check
 npm run test:backend
-npm run build
-~~~
+cargo tauri dev
+```
 
-Production installers are written to **src-tauri/target/release/bundle/**. Windows builds produce NSIS and MSI installers; other platforms require their own native build environment.
+Install Rust, the Tauri CLI and [native prerequisites](https://v2.tauri.app/start/prerequisites/) first. `npm run build` produces native bundles under `src-tauri/target/release/bundle/`. Windows packaging produces NSIS and MSI installers. Other platforms need their own build environment and are not validated by these Windows screenshots.
 
-Backend checks cover storage compatibility, backups, genre union, cache expiry and request coalescing, approval idempotency, and MCP protocol/security behavior.
+See [development and verification](docs/development.md) for the source map and isolated runtime checks.
 
-Snapshot checks also cover full progress/image round trips, merge idempotency, optional key transfer, invalid archives, and interrupted import recovery. Run `tests/snapshot-runtime-check.cjs` against an isolated debug WebView on port 9233 to exercise export, preview, merge, replacement, saved research, and offline thumbnails through the app UI. Its `--prepare` option creates test fixtures; use an isolated directory under `.qa-data/`. Debug-only `MOVINIGHT_QA_SNAPSHOT_EXPORT` and `MOVINIGHT_QA_SNAPSHOT_IMPORT` can select fixture ZIP paths without a native picker. Release builds ignore these overrides.
+---
 
-<details>
-<summary>Optional WebView runtime checks</summary>
+**Screenshots:** captured from the actual 1.3.3 desktop WebView with TMDB metadata and a separate demonstration library. Dates, research and recommendation explanations are fixtures; personal viewing history and credentials are not shown. [Capture notes and gallery](docs/screenshots.md).
 
-The Playwright scripts in **tests/** connect to an isolated debug WebView on port 9229. Install Playwright or set **MOVINIGHT_PLAYWRIGHT_PATH** to an existing module.
-
-Set **MOVINIGHT_QA_DATA_DIR** to an absolute isolated data directory, **WEBVIEW2_USER_DATA_FOLDER** to a separate WebView profile, and **WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS** to **--remote-debugging-port=9229** before launching the debug executable. Copy test library files into the isolated directory first.
-
-Then run **npm run test:runtime** and **npm run test:responsive**. Runtime checks stage and approve titles in that test library. Release builds ignore the QA data-directory override.
-
-</details>
-
-### Project layout
-
-~~~text
-dist/                       Frontend HTML, JavaScript and CSS
-src-tauri/src/
-  lib.rs                    App commands and library behavior
-  api.rs                    TMDB client and response cache
-  ai.rs                     Research, proposals and suggestions
-  mcp.rs                    Local MCP transport and tools
-  storage.rs                Atomic persistence and backups
-  offline.rs                SQLite index, image downloads and bounded eviction
-branding/                   Original branding, demo and screenshots
-tests/                      WebView runtime and layout checks
-MCP_GUIDE.md                 Client setup and agent workflows
-~~~
-
-## Contributing & credits
-
-Issues and pull requests are welcome. MoviNight uses [TMDB](https://www.themoviedb.org/) for movie and TV data, [Tauri](https://tauri.app/) for the desktop shell, and [Rust](https://www.rust-lang.org/) for the backend.
-
-Licensed under [MIT](LICENSE). Built by [Mahostar](https://github.com/mahostar).
+Built by [Mahostar](https://github.com/mahostar). Metadata and artwork supplied by [TMDB](https://www.themoviedb.org/); this product is not endorsed or certified by TMDB. Powered by [Tauri](https://tauri.app/) and [Rust](https://www.rust-lang.org/). Licensed under [MIT](LICENSE).
