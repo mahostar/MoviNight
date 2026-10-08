@@ -1,6 +1,6 @@
 # MoviNight MCP — agent instructions
 
-MoviNight 1.3.2 includes an opt-in local MCP server using Streamable HTTP and JSON-RPC 2.0. The desktop app must remain open. Start it in Settings → MCP Server. Use **Copy documentation** in the same panel to copy this entire guide, even while the server is stopped.
+MoviNight 1.3.3 includes an opt-in local MCP server using Streamable HTTP and JSON-RPC 2.0. The desktop app must remain open. Start it in Settings → MCP Server. Use **Copy documentation** in the same panel to copy this entire guide, even while the server is stopped.
 
 Endpoint: `http://127.0.0.1:37419/mcp`
 Authentication: `Authorization: Bearer <token shown in Settings>`

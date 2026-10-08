@@ -6,6 +6,7 @@ mod api;
 mod discovery;
 mod mcp;
 mod offline;
+mod snapshot;
 mod storage;
 use ai::*;
 use api::*;
@@ -531,6 +532,10 @@ fn disable_always_on_top(window: tauri::Window) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|_| {
+            snapshot::recover(&get_config_dir()?)?;
+            Ok(())
+        })
         .manage(std::sync::Arc::new(AppState {
             api_key: Mutex::new(None),
             data_lock: Mutex::new(()),
@@ -570,13 +575,18 @@ pub fn run() {
             disable_always_on_top,
             get_ai_workspace,
             save_research,
+            restore_research_batch,
             review_proposal,
             review_suggestion,
             dismiss_suggestion,
             start_mcp,
             stop_mcp,
             mcp_status,
-            backup_library
+            backup_library,
+            snapshot::export_snapshot,
+            snapshot::preview_snapshot,
+            snapshot::import_snapshot,
+            snapshot::apply_snapshot_preferences
         ])
         .run(tauri::generate_context!())
         .expect("error while running MoviNight");

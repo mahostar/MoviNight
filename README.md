@@ -8,7 +8,7 @@ A desktop movie and TV companion built with **Tauri 2 · Rust · JavaScript**.
 
 **[Download MoviNight 1.3.1 for Windows](https://github.com/mahostar/MoviNight/releases/tag/MoviNight-v1.3.1)**
 
-Current source and local Windows build: **1.3.2**. The download above is the latest published installer.
+Current source and local Windows build: **1.3.3**. The download above is a published installer; 1.3.3 has not been published as a GitHub release.
 
 [Explore the features](#what-you-can-do) · [Connect an AI agent](MCP_GUIDE.md) · [Build the app](#development)
 
@@ -106,7 +106,9 @@ See the [complete MCP guide](MCP_GUIDE.md).
 
 ## Your library & upgrades
 
-Install **1.3.2** over your existing installation using the same installation scope. The app identifier and saved-data location remain the same; uninstalling or clearing your library is unnecessary.
+Install **1.3.3** over your existing installation using the same installation scope. The app identifier and saved-data location remain the same; uninstalling or clearing your library is unnecessary.
+
+Use **Settings → Data transfer** to export your progress as a portable ZIP with saved-title thumbnails, watched dates and seasons, waitlist, research, pending approvals, suggestions, and preferences. Browsing cache is excluded. Including your TMDB API key is optional. Preview an import, then merge with current progress or explicitly replace it; the app creates a recovery backup first. See the [snapshot format and merge rules](SNAPSHOT_FORMAT.md).
 
 On Windows, data lives in **%APPDATA%\movinight**:
 
@@ -153,6 +155,8 @@ npm run build
 Production installers are written to **src-tauri/target/release/bundle/**. Windows builds produce NSIS and MSI installers; other platforms require their own native build environment.
 
 Backend checks cover storage compatibility, backups, genre union, cache expiry and request coalescing, approval idempotency, and MCP protocol/security behavior.
+
+Snapshot checks also cover full progress/image round trips, merge idempotency, optional key transfer, invalid archives, and interrupted import recovery. Run `tests/snapshot-runtime-check.cjs` against an isolated debug WebView on port 9233 to exercise export, preview, merge, replacement, saved research, and offline thumbnails through the app UI. Its `--prepare` option creates test fixtures; use an isolated directory under `.qa-data/`. Debug-only `MOVINIGHT_QA_SNAPSHOT_EXPORT` and `MOVINIGHT_QA_SNAPSHOT_IMPORT` can select fixture ZIP paths without a native picker. Release builds ignore these overrides.
 
 <details>
 <summary>Optional WebView runtime checks</summary>

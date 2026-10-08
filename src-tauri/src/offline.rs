@@ -226,6 +226,23 @@ impl OfflineStore {
     pub fn enabled(&self) -> bool {
         self.with_db(|db| Ok(db.settings()?.0)).unwrap_or(false)
     }
+    pub(crate) fn preferences(&self) -> Result<serde_json::Value, ApiError> {
+        self.with_db(|db| {
+            let (enabled, budget) = db.settings()?;
+            Ok(serde_json::json!({"offline_enabled":enabled,"offline_limit_gb":budget / GIB}))
+        })
+    }
+    pub(crate) fn apply_preferences(&self, enabled: bool, limit_gb: u64) -> Result<(), ApiError> {
+        self.with_db(|db| {
+            db.conn
+                .execute(
+                    "UPDATE settings SET enabled=?1,budget=?2 WHERE id=1",
+                    params![enabled, limit_gb * GIB],
+                )
+                .map_err(db_error)?;
+            Ok(())
+        })
+    }
     pub fn load_json(&self, key: &str) -> Option<serde_json::Value> {
         self.with_db(|db| {
             Ok(db.read(key)?.and_then(|(bytes, _, time)| {
@@ -244,7 +261,7 @@ impl OfflineStore {
             let _ = self.with_db(|db| db.write(key, &bytes, "application/json", priority));
         }
     }
-    fn image(&self, key: &str) -> Option<String> {
+    pub(crate) fn image(&self, key: &str) -> Option<String> {
         self.with_db(|db| {
             Ok(db
                 .read(key)?
@@ -389,7 +406,7 @@ pub fn clear_offline_cache(state: State<'_, std::sync::Arc<AppState>>) -> Result
     store.offline.store(false, Ordering::Relaxed);
     Ok(())
 }
-fn image_key(path: &str, size: &str) -> Result<String, ApiError> {
+pub(crate) fn image_key(path: &str, size: &str) -> Result<String, ApiError> {
     let file = path
         .strip_prefix('/')
         .ok_or_else(|| ApiError::Invalid("Invalid TMDB image path".into()))?;
@@ -475,6 +492,9 @@ pub async fn cache_image(
     origin: Option<String>,
     state: State<'_, std::sync::Arc<AppState>>,
 ) -> Result<String, ApiError> {
+    if let Some(image) = crate::snapshot::saved_image(&get_config_dir()?, &path)? {
+        return Ok(image);
+    }
     fetch_image(
         &state,
         &path,

@@ -99,6 +99,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   setupNewFeatures();
   setupOfflineCache();
+  setupSnapshots();
+  await restoreSnapshotPreferences();
   initializeYearRange();
   document.getElementById('sort-by').value = 'popularity.desc';
   await loadApiKey();
@@ -1526,6 +1528,7 @@ function selectSettings(panel) {
   document.querySelectorAll('.settings-tab').forEach(button => button.classList.toggle('active', button.dataset.settings === panel));
   document.getElementById('settings-api-panel').hidden = panel !== 'api';
   document.getElementById('settings-mcp-panel').hidden = panel !== 'mcp';
+  document.getElementById('settings-transfer-panel').hidden = panel !== 'transfer';
 }
 function openMcpSettings() { openSettings(); selectSettings('mcp'); }
 async function refreshMcp() {
@@ -1553,11 +1556,94 @@ async function refreshAi(initial = false) {
       updateResearchLength();
     }
     document.getElementById('research-agent-note').textContent = aiWorkspace.research.agent_note || "Your agent's progress and unmatched titles will appear here.";
+    const archive = document.getElementById('research-archive');
+    if (archive) {
+      const batches = aiWorkspace.research_archive || [];
+      document.getElementById('research-archive-section').hidden = !batches.length;
+      const options = '<option value="">Choose a saved research batch</option>' + batches.map(r => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.text.slice(0, 65))} · ${escapeHtml(r.updated_at.slice(0, 10))}</option>`).join('');
+      if (archive.innerHTML !== options) archive.innerHTML = options;
+    }
     renderProposals(aiWorkspace.proposals);
     renderSuggestions(aiWorkspace.suggestions);
     renderSeasonSuggestions();
   } catch (error) { showError(`Could not read AI workspace: ${error}`); }
   finally { aiRefreshing = false; }
+}
+
+function setupSnapshots() {
+  let preview = null;
+  let busy = false;
+  const status = document.getElementById('snapshot-status');
+  const mode = document.getElementById('snapshot-mode');
+  function updateControls() {
+    const replace = mode.value === 'replace';
+    document.getElementById('snapshot-replace-label').hidden = !replace;
+    document.getElementById('snapshot-mode-help').textContent = replace
+      ? 'Your current progress will be replaced. A recovery backup is created first. The API key changes only if you select the included key.'
+      : 'Existing watched dates stay intact; checked seasons are combined. Watched titles stay out of Waitlist. Different research batches are preserved in saved research.';
+    document.getElementById('snapshot-import').disabled = busy || !preview || (replace && !document.getElementById('snapshot-confirm-replace').checked);
+    for (const id of ['snapshot-export','snapshot-choose','snapshot-cancel','snapshot-mode','snapshot-use-key','snapshot-include-key']) document.getElementById(id).disabled = busy;
+  }
+  async function run(action) {
+    if (busy) return;
+    busy = true; updateControls();
+    try { await action(); } catch (error) { status.textContent = String(error); showError(String(error)); }
+    finally { busy = false; updateControls(); }
+  }
+  document.getElementById('snapshot-export').onclick = () => run(async () => {
+    if (researchDirty && !(await saveResearch())) throw new Error('Save your research before exporting.');
+    status.textContent = 'Capturing saved progress and collecting thumbnails…';
+    const result = await invoke('export_snapshot', {zoom:Number(document.getElementById('app-zoom').value),includeApiKey:document.getElementById('snapshot-include-key').checked,destination:null});
+    status.textContent = result.cancelled ? 'Export cancelled.' : `Snapshot saved: ${result.path} · ${result.thumbnails} thumbnails${result.missing_thumbnails ? ` · ${result.missing_thumbnails} thumbnails unavailable; progress is complete` : ''}`;
+    if (!result.cancelled) showSuccess('Snapshot ZIP exported');
+  });
+  document.getElementById('snapshot-choose').onclick = () => run(async () => {
+    const result = await invoke('preview_snapshot', {path:null});
+    if (result.cancelled) { status.textContent = 'File selection cancelled.'; return; }
+    preview = result; mode.value = 'merge'; document.getElementById('snapshot-confirm-replace').checked = false;
+    document.getElementById('snapshot-preview').hidden = false;
+    document.getElementById('snapshot-file').textContent = `${result.path} · Exported ${new Date(result.created_at).toLocaleString()} · MoviNight ${result.app_version}`;
+    const labels = {watched:'Watched',waitlist:'Waitlist',pending_matches:'Pending matches',pending_suggestions:'Pending suggestions',approved_suggestions:'Approved history',research_batches:'Research batches'};
+    document.getElementById('snapshot-counts').innerHTML = Object.entries(labels).map(([key,label]) => `<div><strong>${result.counts[key].toLocaleString()}</strong><span>${label} · ${result.existing[key].toLocaleString()} currently</span></div>`).join('');
+    document.getElementById('snapshot-images').textContent = `${result.thumbnails} included thumbnails${result.missing_thumbnails ? ` · ${result.missing_thumbnails} unavailable at export` : ''}. Browsing cache is excluded.`;
+    document.getElementById('snapshot-use-key-label').hidden = !result.contains_api_key;
+    document.getElementById('snapshot-use-key').checked = result.contains_api_key;
+    status.textContent = result.contains_api_key ? 'This ZIP contains a TMDB API key. You can keep the key already on this device by unchecking the option.' : 'Validated snapshot. Your current TMDB API key will be kept.';
+  });
+  mode.onchange = updateControls;
+  document.getElementById('snapshot-confirm-replace').onchange = updateControls;
+  document.getElementById('snapshot-cancel').onclick = () => {preview = null; document.getElementById('snapshot-preview').hidden = true; status.textContent = 'Import cancelled; progress unchanged.'; updateControls();};
+  document.getElementById('snapshot-import').onclick = () => run(async () => {
+    status.textContent = 'Creating a recovery backup and importing progress…';
+    const result = await invoke('import_snapshot', {path:preview.path,digest:preview.digest,mode:mode.value,importApiKey:document.getElementById('snapshot-use-key').checked});
+    preview = null; document.getElementById('snapshot-preview').hidden = true;
+    const prefs = result.preferences;
+    document.getElementById('app-zoom').value = prefs.zoom; document.getElementById('app-zoom').dispatchEvent(new Event('input'));
+    let preferenceWarning = '';
+    try { await restoreSnapshotPreferences(); } catch (error) {preferenceWarning = ` Preferences could not be applied: ${error}`;}
+    researchDirty = false; offlineImages.clear(); proposalRenderKey = ''; suggestionRenderKey = ''; seasonSuggestionRenderKey = '';
+    await loadApiKey(); await Promise.all([loadWatchedItems(),loadWhiteListItems(),refreshAi(true),refreshOfflineStatus()]);
+    displayWatchedItems(); displayWhiteListItems();
+    status.textContent = `Progress imported. Recovery backup: ${result.backup}.${preferenceWarning}`;
+    showSuccess('Snapshot imported; your progress is ready');
+  });
+  const archiveSection = document.createElement('div'); archiveSection.id = 'research-archive-section'; archiveSection.className = 'library-safety'; archiveSection.hidden = true;
+  archiveSection.innerHTML = '<label for="research-archive">Saved research batches</label><select id="research-archive" class="sort-select"></select><button id="research-archive-open" class="btn btn-secondary">Open saved research</button>';
+  document.querySelector('.research-editor').prepend(archiveSection);
+  document.getElementById('research-archive-open').onclick = async () => {
+    const id = document.getElementById('research-archive').value; if (!id) return;
+    try { if (researchDirty && !(await saveResearch())) return; await invoke('restore_research_batch',{researchId:id}); researchDirty = false; await refreshAi(true); showSuccess('Saved research restored'); } catch(error) {showError(String(error));}
+  };
+  updateControls();
+}
+async function restoreSnapshotPreferences() {
+  try {
+    const prefs = await invoke('apply_snapshot_preferences');
+    if (!prefs) return;
+    document.getElementById('app-zoom').value = prefs.zoom;
+    document.getElementById('app-zoom').dispatchEvent(new Event('input'));
+    await refreshOfflineStatus();
+  } catch (error) {showError(`Imported preferences will retry on restart: ${error}`);}
 }
 function updateResearchLength() { document.getElementById('research-length').textContent = `${document.getElementById('research-text').value.length.toLocaleString()} characters`; }
 async function saveResearch() {
@@ -1819,7 +1905,7 @@ function setupOfflineCache() {
   const observer = new IntersectionObserver(entries => {
     for (const entry of entries) if (entry.isIntersecting) {
       const image=entry.target;observer.unobserve(image);
-      if (!offlineEnabled || offlineClearInProgress) continue;
+      if (offlineClearInProgress) continue;
       const source=image.getAttribute('src');
       const match=source?.match(/^https:\/\/image\.tmdb\.org\/t\/p\/(w\d+|original)(\/[^/?#]+)$/);
       if (!match) continue;

@@ -3002,6 +3002,13 @@ body,.app { min-height: calc(100vh / var(--app-zoom,1)); }
   .compact-discover .type-filter { grid-column: 1 / -1; }
 }
 #year-to-combo .year-dropdown { left: auto; right: 0; }
+.snapshot-counts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin: 14px 0; }
+.snapshot-counts div { padding: 12px; border: 1px solid #34445a; border-radius: 10px; background: rgba(255,255,255,.025); }
+.snapshot-counts strong { display: block; font-size: 22px; color: #eef3ff; }
+.snapshot-counts span { font-size: 12px; color: #9babc0; }
+.snapshot-status, #snapshot-file { overflow-wrap: anywhere; }
+#snapshot-preview .inline-actions { margin-top: 16px; }
+#snapshot-preview .compact-checkbox { margin-top: 12px; }
 @media (max-width: 760px) {
   #genres-dropdown .dropdown-panel { left: 0; right: auto; }
 }

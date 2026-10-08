@@ -8,6 +8,8 @@ pub struct AiWorkspace {
     pub proposals: Vec<Proposal>,
     #[serde(default)]
     pub suggestions: Vec<Suggestion>,
+    #[serde(default)]
+    pub research_archive: Vec<Research>,
 }
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct Research {
@@ -56,6 +58,28 @@ pub fn get_ai_workspace(
     workspace(&state)
 }
 #[tauri::command]
+pub fn restore_research_batch(
+    research_id: String,
+    state: State<'_, std::sync::Arc<AppState>>,
+) -> Result<(), ApiError> {
+    let _guard = state.data_lock.lock().unwrap();
+    let dir = get_config_dir()?;
+    let mut ws: AiWorkspace = storage::read(&dir, "ai_workspace.json")?.unwrap_or_default();
+    let position = ws
+        .research_archive
+        .iter()
+        .position(|r| r.id == research_id)
+        .ok_or_else(|| ApiError::Invalid("Saved research batch unavailable".into()))?;
+    let restored = ws.research_archive.remove(position);
+    if !ws.research.id.is_empty() {
+        let old = std::mem::replace(&mut ws.research, restored);
+        ws.research_archive.push(old);
+    } else {
+        ws.research = restored;
+    }
+    storage::write(&dir, "ai_workspace.json", &ws)
+}
+#[tauri::command]
 pub fn save_research(
     text: String,
     instructions: String,
@@ -75,6 +99,9 @@ pub fn save_research(
     } else {
         uuid::Uuid::new_v4().to_string()
     };
+    if ws.research.id != id && !ws.research.id.is_empty() {
+        ws.research_archive.push(ws.research.clone());
+    }
     ws.research = Research {
         id,
         text,
